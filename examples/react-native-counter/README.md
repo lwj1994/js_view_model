@@ -1,45 +1,63 @@
 # React Native Counter
 
-这个最小示例演示：
+[中文](./README_ZH.md)
 
-- 模块级稳定 Spec；
-- unkeyed 实例在当前 Scope 内私有共享；
-- selector 只订阅 count；
-- read hook 只获取 action；
-- AppState 自动 pause/resume。
+This minimal example demonstrates:
 
-> 需要 v0.1 Alpha 的 `view_model`。本示例只适用于 React Native，不是 React Web 示例。
+- a stable, module-level Spec;
+- one unkeyed instance privately shared inside a Scope Binding;
+- selector-based rendering for one state field;
+- a read hook used only to obtain actions;
+- automatic Runtime pause/resume through React Native `AppState`.
 
-## App.tsx
+> This example requires the v0.1 Alpha `view_model` API. It is for React
+> Native applications, not React Web.
+
+The `App.tsx` filename below labels an illustrative snippet. This directory
+does not contain a complete runnable React Native project or native build
+configuration.
+
+## Ownership Model
+
+`ViewModelRuntime` is the module-sharing and dependency-injection boundary.
+`ViewModelScope` is its React owner adapter: it provides one stable Binding to
+hooks and maps React commit/unmount to ownership. Scope is not the DI system
+itself, and non-React modules can use a plain Binding from the same Runtime.
+
+With no `runtime` prop, a root Scope creates and owns its Runtime. An injected
+Runtime remains owned by the caller and must be disposed at the real
+application or test shutdown boundary.
+
+## `App.tsx`
 
 ```tsx
 import { Button, SafeAreaView, Text } from 'react-native';
 import { StateViewModel, viewModelSpec } from 'view_model/core';
 import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/react-native';
 
-type CounterState = {
+type CounterState = Readonly<{
   count: number;
-};
+}>;
 
 class CounterViewModel extends StateViewModel<CounterState> {
-  constructor() {
+  public constructor() {
     super({ count: 0 });
   }
 
-  increment = () => {
+  public readonly increment = (): void => {
     this.updateState((current) => ({
       count: current.count + 1,
     }));
   };
 
-  decrement = () => {
+  public readonly decrement = (): void => {
     this.updateState((current) => ({
       count: current.count - 1,
     }));
   };
 }
 
-// Spec 必须在 render 外稳定存在。
+// Keep the Spec stable and outside React render.
 const counterSpec = viewModelSpec(() => new CounterViewModel());
 
 function CounterScreen() {
@@ -64,14 +82,58 @@ export default function App() {
 }
 ```
 
-把两个 `CounterScreen` 放在同一个 `ViewModelScope` 下，它们会共享这个稳定 unkeyed Spec 的实例。把它们放进两个独立 Scope，则各自拥有 count。
+The selector watches the counter but rerenders only when `state.count`
+changes. `useReadViewModel` owns the same instance so the buttons can call its
+actions without rerendering because of ordinary ViewModel notifications.
 
-单个 `CounterScreen` 卸载只会移除它的 hook listener；实例由当前 Scope Binding 保留，直到 Scope 自身卸载并 dispose。需要页面离开即释放时，应让页面拥有自己的 `ViewModelScope`。
+The Spec builder and constructor are pure. React may execute them while
+preparing a render that never commits; start timers, requests, native
+subscriptions, and other managed resources from `onCreate`, then register
+their cleanup through `addDispose` or release them in `onDispose`.
 
-若确实需要跨 Scope 共享，应使用业务上稳定且可解释的显式 key：
+## Scope Identity
+
+Two `CounterScreen` components below the same `ViewModelScope` resolve the same
+stable unkeyed Spec through the same Binding, so they share one count. Put them
+under two different Scopes and each Scope Binding gets its own unkeyed
+generation, even when the Scopes inherit the same Runtime.
+
+When cross-Scope sharing is intentional, create a stable keyed variant at
+module scope:
 
 ```ts
-const sharedCounterSpec = viewModelSpec(() => new CounterViewModel(), { key: 'shared-counter' });
+const sharedCounterSpec = counterSpec.withKey('shared-counter');
 ```
 
-不要为了“方便”把页面级实例设为 `aliveForever`。永久实例必须提供 key，并只能通过 Runtime dispose 或 recycle 结束。
+The key allows Bindings in one Runtime to share a generation; it does not keep
+that generation alive. Avoid `aliveForever` for screen-local state. Permanent
+instances require an explicit key and end only through Runtime disposal or
+forceful recycle.
+
+## AppState Lifecycle
+
+The React Native Scope uses `AppState` by default:
+
+- `active` resumes the Runtime;
+- `inactive`, `background`, `null`, and other states pause it.
+
+Pause/resume applies to the whole Runtime, not only to the Scope that supplied
+the lifecycle source. A nested Scope sharing its parent Runtime therefore
+cannot independently pause only its own ViewModels. Use a separate Runtime for
+independent pause semantics, and explicitly dispose that Runtime if it was
+injected.
+
+The `lifecycle` prop replaces the default AppState source. If a screen needs an
+independent Runtime governed by both AppState and navigation focus, provide
+one custom lifecycle source that combines those conditions.
+
+## Lifetime Notes
+
+- A hook cleanup removes that hook's subscription; it does not release the
+  Scope Binding's owner entry.
+- The root Scope keeps the counter generation owned until the Scope unmounts
+  or the generation is recycled.
+- Give a screen its own nested Scope when its unkeyed modules must be released
+  when that screen truly unmounts.
+- Screen blur is not disposal. Model focus explicitly or provide a deliberate
+  lifecycle source when mounted screens need focus-aware behavior.

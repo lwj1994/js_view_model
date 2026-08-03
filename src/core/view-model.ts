@@ -10,8 +10,9 @@ import type {
 const VIEW_MODEL_BRAND = Symbol.for('view_model.ViewModel.v1');
 
 /**
- * ESM 与 CJS 条件入口会各自加载一份模块代码。使用全局 symbol 让两边仍能操作
- * 同一个 ViewModel 实例，同时用版本后缀隔离未来不兼容的内部协议。
+ * ESM and CJS conditional entry points load separate module copies. A global
+ * symbol lets both copies operate on the same ViewModel instance, while the
+ * version suffix isolates future incompatible internal protocols.
  *
  * @internal
  */
@@ -41,10 +42,10 @@ export function isViewModel(value: unknown): value is ViewModel {
 }
 
 /**
- * 所有业务 ViewModel 的基础类。
+ * Base class for application ViewModels.
  *
- * 构造函数必须保持纯净；资源初始化放在 `onCreate`，它只会在第一次 commit acquire
- * 后执行。
+ * Constructors must stay pure. Initialize resources in `onCreate`, which runs
+ * only after the first commit acquires the instance.
  */
 export abstract class ViewModel {
   readonly #listeners = new Set<ViewModelListener>();
@@ -79,7 +80,7 @@ export abstract class ViewModel {
     return this.#paused;
   }
 
-  /** 当前实例稳定的父依赖 binding，可在 getter 中 read/watch 子 ViewModel。 */
+  /** Stable dependency binding for this instance; use it in getters to read/watch child ViewModels. */
   public get viewModelBinding(): ViewModelBinding {
     this.assertAlive();
     if (this.#binding === undefined) {
@@ -90,7 +91,7 @@ export abstract class ViewModel {
     return this.#binding;
   }
 
-  /** 直接监听实例版本，主要供 selector 等细粒度适配层使用。 */
+  /** Subscribe directly to instance versions, primarily for fine-grained adapters such as selectors. */
   public subscribe(listener: ViewModelListener): ViewModelDispose {
     this.#assertAlive();
     this.#listeners.add(listener);
@@ -123,7 +124,7 @@ export abstract class ViewModel {
     if (errors.length > 0) throw new AggregateError(errors, 'ViewModel 通知监听器时发生错误。');
   }
 
-  /** 为一次同步修改附加调试 action；嵌套调用会恢复外层 action。 */
+  /** Attach a debug action to one synchronous mutation; nested calls restore the outer action. */
   protected update<TResult>(action: unknown, mutation: () => TResult): TResult {
     this.#assertAlive();
     const previous = this.#action;
@@ -135,7 +136,7 @@ export abstract class ViewModel {
     }
   }
 
-  /** 注册随实例销毁执行的清理函数。 */
+  /** Register a cleanup callback to run when this instance is disposed. */
   protected addDispose(dispose: ViewModelDispose): ViewModelDispose {
     this.assertAlive();
     this.#disposers.push(dispose);

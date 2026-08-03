@@ -4,7 +4,7 @@ export interface ReactNativeAppStateSubscription {
   remove(): void;
 }
 
-/** 仅描述本库使用的 AppState 表面，方便测试与定制 RN 宿主。 */
+/** The AppState surface used by this library, kept minimal for tests and custom RN hosts. */
 export interface ReactNativeAppState {
   readonly currentState: string | null;
   addEventListener(

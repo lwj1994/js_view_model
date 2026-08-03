@@ -15,8 +15,9 @@ const shared: Options = {
 };
 
 /**
- * 平台入口必须复用 core entry，不能把 ViewModel 再 bundle 一份；否则业务从
- * `view_model/core` 继承的实例会在平台 Runtime 的 instanceof 检查中失去身份。
+ * Platform entries must reuse the core entry instead of bundling another
+ * public ViewModel copy. This preserves constructor identity between the core
+ * and platform imports within each module condition.
  */
 function externalCore(extension: '.js' | '.cjs'): Plugin {
   return {

@@ -56,7 +56,8 @@ function describeHandle(handle: InstanceHandle): string {
 }
 
 /**
- * 一个 Runtime 是 keyed 实例共享、依赖图和平台暂停状态的最大边界。
+ * A runtime is the outermost boundary for keyed instance sharing, the
+ * dependency graph, and platform pause state.
  */
 export class ViewModelRuntime {
   readonly #handles = new Set<InstanceHandle>();
@@ -86,7 +87,7 @@ export class ViewModelRuntime {
     return new ViewModelBinding(this, options);
   }
 
-  /** 聚合多个 app/window 生命周期来源；最后一个 token 恢复时才真正 resume。 */
+  /** Aggregate app/window lifecycle sources and resume only after the last token is cleared. */
   public pause(token: unknown = DEFAULT_PAUSE_TOKEN): void {
     this.#assertAlive();
     const wasPaused = this.isPaused;
@@ -133,8 +134,8 @@ export class ViewModelRuntime {
   }
 
   /**
-   * 强制销毁目标 generation。传 Spec 时会回收本 Runtime 内该身份的全部命中；
-   * unkeyed Spec 可能在多个 Binding 中各有一个命中。
+   * Force-dispose the target generation. A Spec recycles every matching
+   * identity in this runtime; an unkeyed Spec can match one per Binding.
    */
   public recycle(target: ViewModel | ViewModelSpec<ViewModel>): number {
     this.#assertAlive();
@@ -230,7 +231,8 @@ export class ViewModelRuntime {
     }
 
     const generation = ++this.#generation;
-    // dependency binding 在 attach 前创建，业务只能在 builder 返回、attach 完成后访问它。
+    // Create the dependency binding before attach. Application code cannot
+    // access it until the builder has returned and attach has completed.
     const handle = {
       spec,
       viewModel,
@@ -267,9 +269,10 @@ export class ViewModelRuntime {
       this.#keyed.set(spec.token, entries);
     }
 
-    // React render 可以被 Suspense 或并发调度放弃。prepare 产生的 provisional
-    // generation 若没有在本轮提交 acquire，必须自动清扫，不能由长寿命 Runtime
-    // 永久强持有；后续提交会重新 prepare 并由 snapshot 变化触发同步重渲染。
+    // Suspense or concurrent scheduling can abandon a React render. Clean up
+    // provisional generations that are not acquired by the current commit so
+    // a long-lived Runtime cannot retain them forever. A later commit prepares
+    // again and the changed snapshot triggers a synchronous rerender.
     this.#scheduleDisposal(handle, true);
 
     return handle;
@@ -488,8 +491,9 @@ export class ViewModelRuntime {
       }
     }
 
-    // 先完整结束旧 generation 及其独占 dependency tree，再通知 owner 重新解析，
-    // 避免新 onCreate 与旧 onDispose 同时占用 IPC、端口或原生订阅。
+    // Finish the old generation and its exclusively owned dependency tree
+    // before notifying owners to resolve again. This prevents a new onCreate
+    // from overlapping the old onDispose on IPC, ports, or native subscriptions.
     try {
       handle.viewModel[VIEW_MODEL_INTERNAL].dispose();
     } catch (error) {
@@ -536,7 +540,7 @@ export class ViewModelRuntime {
   }
 }
 
-/** 一个 Scope、页面或 plain host 对应一个稳定 Binding。 */
+/** A Scope, screen, or plain host owns one stable Binding. */
 export class ViewModelBinding {
   public readonly id: string;
   public readonly runtime: ViewModelRuntime;
@@ -569,7 +573,7 @@ export class ViewModelBinding {
     return this.#disposed;
   }
 
-  /** render-safe：可构造纯对象，但不会 addRef、onCreate 或 onBind。 */
+  /** Render-safe: may construct pure objects, but does not acquire, call onCreate, or call onBind. */
   /** @internal */
   public prepare<T extends ViewModel>(spec: ViewModelSpec<T>): T {
     this.#assertAlive();
@@ -594,7 +598,7 @@ export class ViewModelBinding {
     return handle.viewModel;
   }
 
-  /** commit-safe：建立 Binding owner，并注册当前 hook 的订阅。 */
+  /** Commit-safe: establishes Binding ownership and registers the current hook subscription. */
   /** @internal */
   public subscribe<T extends ViewModel>(
     spec: ViewModelSpec<T>,
@@ -619,7 +623,7 @@ export class ViewModelBinding {
     };
   }
 
-  /** watch 快照包含 VM version；read 快照只随 generation/lifecycle 改变。 */
+  /** A watch snapshot includes the VM version; a read snapshot changes only with generation/lifecycle. */
   /** @internal */
   public getSnapshot<T extends ViewModel>(spec: ViewModelSpec<T>, mode: ViewModelMode): string {
     this.#assertAlive();

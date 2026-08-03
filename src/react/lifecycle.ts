@@ -2,9 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import type { ViewModelRuntime } from '../core/index.js';
 
-/**
- * 平台生命周期的最小结构。平台入口负责把原生事件转换成 active / inactive。
- */
+/** Minimal platform lifecycle surface. Platform entry points map native events to active/inactive. */
 export interface ViewModelLifecycleSource {
   isActive(): boolean;
   subscribe(listener: (active: boolean) => void): () => void;
@@ -68,9 +66,10 @@ export function useRuntimeLifecycle(
       } catch (error) {
         unsubscribeError = error;
       }
-      // 某个窗口/原生 source 离开后只释放自己的暂停原因，不能唤醒其他 source。
-      // resume 延迟一个微任务，使 StrictMode 的 cleanup -> setup 能取消这次释放，
-      // 避免后台应用在开发探测期间产生一次虚假的 onResume / onPause。
+      // A departing window/native source clears only its own pause reason and
+      // must not wake other sources. Deferring resume by one microtask lets a
+      // StrictMode cleanup -> setup cancel it, avoiding a false onResume/onPause
+      // pair while a background app is being probed in development.
       const task: PendingResume = { runtime, token, cancelled: false };
       pendingResume.current = task;
       queueMicrotask(() => {

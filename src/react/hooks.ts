@@ -26,13 +26,13 @@ function useResolvedViewModel<T extends ViewModel>(
   mode: SubscriptionMode,
 ): T {
   const binding = useViewModelBinding();
-  // prepare 可以构造纯对象，但不会 addRef、onCreate 或 onBind；真正激活发生在
-  // useSyncExternalStore 的 subscribe（commit）阶段。
+  // prepare may construct a pure object, but does not acquire it or call
+  // onCreate/onBind. Activation happens in useSyncExternalStore subscribe (commit).
   const viewModel = binding.prepare(spec);
   const subscribe = useCallback(
     (listener: () => void) => binding.subscribe(spec, mode, listener),
-    // generation 被 recycle 后，新的 prepared VM 会改变订阅函数身份，React 因此
-    // 退订旧 handle 并订阅新 handle。
+    // After recycle, the newly prepared VM changes the subscription function
+    // identity, so React unsubscribes from the old handle and subscribes to the new one.
     [binding, mode, spec, viewModel],
   );
   const getSnapshot = useCallback(() => binding.getSnapshot(spec, mode), [binding, mode, spec]);
@@ -41,12 +41,12 @@ function useResolvedViewModel<T extends ViewModel>(
   return viewModel;
 }
 
-/** 解析并监听 ViewModel 的更新。 */
+/** Resolve a ViewModel and subscribe to its updates. */
 export function useViewModel<T extends ViewModel>(spec: ViewModelSpec<T>): T {
   return useResolvedViewModel(spec, 'watch');
 }
 
-/** 解析并保活 ViewModel，但不因普通 notify 更新组件。回收 generation 时仍会重建。 */
+/** Resolve and retain a ViewModel without rerendering on ordinary notifications. Recycle still rebuilds it. */
 export function useReadViewModel<T extends ViewModel>(spec: ViewModelSpec<T>): T {
   return useResolvedViewModel(spec, 'read');
 }
@@ -65,8 +65,8 @@ interface SelectorSnapshot<Selection> {
 }
 
 /**
- * 只在选择结果变化时更新组件。selector 接收 ViewModel，因此既可选普通字段，
- * 也可选 StateViewModel 的 state。
+ * Update the component only when the selected value changes. The selector
+ * receives the ViewModel and may select plain fields or StateViewModel state.
  */
 export function useViewModelSelector<T extends ViewModel, Selection>(
   spec: ViewModelSpec<T>,
@@ -81,9 +81,10 @@ export function useViewModelSelector<T extends ViewModel, Selection>(
     [binding, spec, viewModel],
   );
   const getSnapshot = useCallback((): SelectorSnapshot<Selection> => {
-    // recycle 可能在 selector 的值恰好相同时发生。每次读取 snapshot 都重新做纯
-    // prepare，借此识别 generation；新 generation 必须返回新 wrapper 触发一次
-    // render / resubscribe，普通同值更新仍复用旧 wrapper。
+    // recycle can produce an equal selected value. Purely prepare on each
+    // snapshot read to detect the generation: a new generation must return a
+    // new wrapper to force one render/resubscribe, while ordinary equal-value
+    // updates keep the previous wrapper.
     const currentViewModel = binding.prepare(spec);
     const version = binding.getSnapshot(spec, 'watch');
     const previous = cache.current;
