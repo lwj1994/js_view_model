@@ -10,7 +10,7 @@ export interface ViewModelChange<TAction = unknown> {
   readonly version: number;
 }
 
-/** builder 只负责纯对象构造；依赖必须在 ViewModel attach 后通过 getter 解析。 */
+/** A builder only constructs a pure object; resolve dependencies through getters after attach. */
 export type ViewModelBuilder<T extends ViewModel> = () => T;
 
 export interface ViewModelSpecOptions {

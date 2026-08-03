@@ -1,28 +1,41 @@
 # Changelog
 
-本项目的显著变更记录在此文件中。
+[简体中文](./CHANGELOG_ZH.md)
+
+Significant changes to this project are recorded here.
 
 ## [Unreleased]
 
 ### Changed
 
-- 暂无。
+- Added mirrored English and Chinese module documentation.
+- Documented application-wide dependency injection as a core capability and
+  clarified that Scope is a React owner adapter.
+- Added the externally reusable `js-view-model` skill.
+- Standardized source-code comments in English.
 
 ## [0.1.0] - Alpha
 
 ### Added
 
-- 新增 `view_model/core`：ViewModel、Spec、Runtime、Binding、依赖图与自动生命周期。
-- 新增 `view_model/react-native`：Scope、hooks 与 AppState pause/resume 集成。
-- 新增 `view_model/electron`：renderer Scope、hooks 与窗口生命周期集成。
-- 新增 keyed/unkeyed 实例身份、`aliveForever`、父子 ViewModel getter 依赖和强制 recycle。
-- 新增 StrictMode render/commit 生命周期协调。
-- 新增 ESM/CJS 双格式输出与跨条件入口的统一 ViewModel/Spec 身份协议。
+- Added `view_model/core` with ViewModel, Spec, Runtime, Binding, dependency
+  graphs, and automatic lifecycle management.
+- Added `view_model/react-native` with Scope, hooks, and AppState pause/resume
+  integration.
+- Added `view_model/electron` with renderer Scope, hooks, and window lifecycle
+  integration.
+- Added keyed/unkeyed identity, `aliveForever`, parent-child getter injection,
+  and forceful recycle.
+- Added React StrictMode render/commit lifecycle coordination.
+- Added ESM/CJS output and a shared cross-condition ViewModel/Spec identity
+  protocol.
 
 ### Known limitations
 
-- 当前为 **v0.1 Alpha**，API 可能调整。
-- 仅支持 React Native 与 Electron App。
-- 不支持普通 React Web、SSR、React Server Components 或通用 DOM 应用。
-- 不支持跨 Electron 进程直接共享 ViewModel 对象。
-- 依赖 getter 只用于 commit 后的 ViewModel 内部协作，不支持在 React render/selector 中读取。
+- v0.1 is Alpha and its API may change.
+- Only React Native and Electron applications are supported.
+- Ordinary React Web, SSR, React Server Components, and general DOM
+  applications are unsupported.
+- ViewModel objects cannot be shared directly between Electron processes.
+- Dependency getters are for post-commit ViewModel collaboration and cannot be
+  read during React render or selectors.

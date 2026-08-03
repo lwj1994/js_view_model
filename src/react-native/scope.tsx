@@ -7,9 +7,12 @@ import { createReactNativeAppStateLifecycleSource, type ReactNativeAppState } fr
 
 export interface ViewModelScopeProps extends PropsWithChildren {
   readonly runtime?: ViewModelRuntime | undefined;
-  /** 默认使用 react-native 的 AppState；测试或特殊宿主可以注入同结构实现。 */
+  /** Use React Native AppState by default; tests and custom hosts may inject this minimal shape. */
   readonly appState?: ReactNativeAppState | undefined;
-  /** 覆盖默认 AppState 生命周期；适合嵌套页面 Scope 接入导航 focus。 */
+  /**
+   * Override the AppState lifecycle. Lifecycle is Runtime-wide, so connect
+   * navigation focus only to an independent Runtime or for intentional whole-Runtime pause.
+   */
   readonly lifecycle?: ViewModelLifecycleSource | undefined;
 }
 

@@ -9,7 +9,7 @@ import {
 
 export interface ViewModelScopeProps extends PropsWithChildren {
   readonly runtime?: ViewModelRuntime | undefined;
-  /** 默认读取当前 Electron renderer 的 window/document。 */
+  /** Read window/document from the current Electron renderer by default. */
   readonly lifecycle?: ElectronLifecycleSource | undefined;
 }
 

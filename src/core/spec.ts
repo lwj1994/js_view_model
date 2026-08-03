@@ -14,7 +14,7 @@ export function isViewModelSpec(value: unknown): value is ViewModelSpec<ViewMode
 }
 
 export class ViewModelSpec<T extends ViewModel> {
-  /** 同一个 token 与 key 共同构成跨 binding 的缓存身份。 */
+  /** The token and key together form the cache identity across bindings. */
   public readonly token: symbol;
   public readonly builder: ViewModelBuilder<T>;
   public readonly key: ViewModelKey | undefined;

@@ -29,8 +29,9 @@ function globalRendererTarget(): ElectronRendererLifecycleTarget {
 }
 
 /**
- * 把 Electron renderer 的窗口焦点与页面可见性合并成 runtime 生命周期。
- * preload 隔离场景也可传入只暴露这些方法的代理对象。
+ * Combine Electron renderer window focus and document visibility into a
+ * runtime lifecycle. Context-isolated preload setups may pass a proxy that
+ * exposes only these methods.
  */
 export function createElectronRendererLifecycleSource(
   target: ElectronRendererLifecycleTarget = globalRendererTarget(),

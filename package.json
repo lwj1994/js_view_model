@@ -1,7 +1,7 @@
 {
   "name": "view_model",
   "version": "0.1.0",
-  "description": "面向 React Native 与 Electron 客户端的 ViewModel、模块组合、依赖注入与自动生命周期框架。",
+  "description": "Application-wide dependency injection, ViewModel composition, state management, and automatic lifecycle for React Native and Electron.",
   "keywords": [
     "view-model",
     "react-native",
@@ -27,8 +27,12 @@
   "sideEffects": false,
   "files": [
     "dist",
+    "docs",
+    "skill",
     "README.md",
+    "README_ZH.md",
     "CHANGELOG.md",
+    "CHANGELOG_ZH.md",
     "LICENSE"
   ],
   "main": "./dist/core/index.cjs",

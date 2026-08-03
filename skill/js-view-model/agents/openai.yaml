@@ -1,0 +1,4 @@
+interface:
+  display_name: 'JS ViewModel'
+  short_description: 'Build React Native and Electron ViewModel modules'
+  default_prompt: 'Use $js-view-model to build a lifecycle-safe ViewModel feature for React Native or Electron.'

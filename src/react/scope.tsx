@@ -12,7 +12,7 @@ import { ViewModelReactContext, type ViewModelReactContextValue } from './contex
 import { useRuntimeLifecycle, type ViewModelLifecycleSource } from './lifecycle.js';
 
 export interface InternalViewModelScopeProps extends PropsWithChildren {
-  /** 注入已有 runtime；省略时，嵌套 Scope 复用父 runtime，根 Scope 创建自己的 runtime。 */
+  /** Inject an existing runtime. Otherwise a nested Scope reuses its parent and a root Scope creates one. */
   readonly runtime?: ViewModelRuntime | undefined;
   readonly lifecycle?: ViewModelLifecycleSource | undefined;
 }
@@ -22,9 +22,7 @@ interface PendingDisposal {
   cancelled: boolean;
 }
 
-/**
- * React 公共实现层。它不会作为独立的 Web 入口导出，只由 RN / Electron 包装使用。
- */
+/** Shared React implementation. It is wrapped by RN/Electron and is not exported as a Web entry point. */
 export function InternalViewModelScope({
   children,
   runtime: injectedRuntime,
@@ -67,8 +65,9 @@ export function InternalViewModelScope({
       const task: PendingDisposal = { binding, cancelled: false };
       pendingDisposal.current = task;
 
-      // React StrictMode 会执行 setup -> cleanup -> setup。延迟到微任务既能让第二次
-      // setup 取消回收，又能保证真实卸载最终释放 binding 与根 runtime。
+      // React StrictMode runs setup -> cleanup -> setup. A microtask delay lets
+      // the second setup cancel disposal while a real unmount still releases
+      // the binding and root runtime.
       queueMicrotask(() => {
         if (task.cancelled) {
           return;
@@ -85,8 +84,9 @@ export function InternalViewModelScope({
         }
 
         if (ownsRuntime) {
-          // 嵌套 Scope 的 cleanup 顺序不应决定正确性；再让出一个微任务，确保
-          // 共用该 runtime 的 child binding 都有机会先释放自己的 owner。
+          // Nested Scope cleanup order must not affect correctness. Yield one
+          // more microtask so child bindings that share this runtime can release
+          // their owners first.
           queueMicrotask(() => {
             const errors: unknown[] = [];
             if (bindingError !== undefined) errors.push(bindingError);

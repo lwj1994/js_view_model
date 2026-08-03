@@ -1,101 +1,279 @@
-# 生命周期与 StrictMode
+# Lifecycle, React commit, and StrictMode
 
-> v0.1 Alpha；仅适用于 React Native 与 Electron App。
+[简体中文](./zh/lifecycle.md) · [Documentation index](./README.md)
 
-## 实例生命周期
+> This guide describes the current v0.1 alpha behavior for React Native and Electron applications.
 
-典型流程：
+Lifecycle is managed at two related levels:
+
+- a `ViewModelRuntime` owns generations, dependency edges, and Runtime-wide pause state;
+- each `ViewModelBinding` contributes one owner relationship and releases it when the Binding is disposed.
+
+A React `ViewModelScope` adapts a subtree to this model by creating one Binding. It is not a separate DI container unless it is also given a separate Runtime.
+
+## Lifecycle overview
+
+A normal React-managed generation follows this sequence:
 
 ```text
-稳定 Spec
-  → render 阶段准备
-  → 首个 hook commit 订阅后由 Scope Binding acquire / bind
-  → Binding owner 引用与 parent → child 边保活
-  → 平台 inactive 时 pause
-  → 平台 active 时 resume
-  → 单个 hook cleanup 时只退订 listener
-  → Scope cleanup 时 dispose Binding / release
-  → 最后一个 owner Binding 离开
-  → dispose
+stable ViewModelSpec
+  -> render calls prepare
+  -> pure builder and constructor may create a provisional generation
+  -> Runtime attaches the generation to its dependency Binding
+  -> hook subscribe runs during commit
+  -> Scope Binding acquires the generation
+  -> onCreate()
+  -> onPause() if the Runtime is already paused
+  -> onBind(bindingId)
+  -> notifications, state changes, and dependency propagation
+  -> hook cleanup removes only that hook subscription
+  -> Scope cleanup disposes its Binding
+  -> onUnbind(bindingId)
+  -> final owner leaves
+  -> deferred zero-owner disposal
+  -> onDispose()
+  -> registered cleanup functions in reverse order
 ```
 
-构造失败、依赖环或 key 约束失败时，Runtime 必须回滚本次暂存创建，不能留下半初始化 generation。
+The sequence changes only when the generation is force-recycled or its Runtime is disposed. Those operations remove all owners and end the generation even when ordinary lifetime rules would keep it alive.
 
-## render 与 commit 分离
+## Construction is provisional
 
-React render 必须保持纯净。render 可能被放弃、重放或并发执行，因此以下行为不能在 render 中正式提交：
+`binding.prepare(spec)` is the render-safe planning operation used by the platform hooks. It may execute the Spec builder and the ViewModel constructor, but it does not:
 
-- 增加 owner 引用；
-- 触发业务 `onBind`；
-- 建立不可回滚的 parent → child 边；
-- 启动计时器、网络连接或原生订阅。
+- acquire a Binding owner;
+- call `onCreate`;
+- call `onBind`;
+- establish a committed parent-to-child owner edge.
 
-hooks 可以在 render 中计算稳定的解析计划，但只有 commit 后才正式 acquire。组件从未 commit 时，不应留下已绑定实例。
+The builder and constructor must therefore be pure object construction. They may initialize in-memory fields, but they must not start:
 
-未被 commit acquire 的 provisional generation 会在当前任务结束后自动清扫。若并发
-render 在清扫后才提交，hook 会依据 generation snapshot 重新解析并同步刷新，不会把
-被放弃 render 的实例永久留在共享 Runtime 中。
+- network requests or sockets;
+- timers or background loops;
+- Electron IPC subscriptions;
+- React Native native-module subscriptions;
+- file handles, ports, or database transactions;
+- child ViewModel resolution.
 
-`binding.prepare(spec)` 可能运行 Spec builder 与 ViewModel 构造器，因此二者也属于纯 render 路径。构造器只应初始化内存字段；计时器、网络、IPC、文件句柄和原生订阅必须推迟到 commit 后的生命周期，并注册对应 cleanup。
+Start committed resources in `onCreate` or in an action invoked after commit, then register deterministic cleanup with `addDispose`.
 
-这里的 render-safe 只覆盖 Spec builder、构造器以及 parent 自身字段/state 的读取。
-parent 的依赖 getter 会调用 `viewModelBinding.read/watch`，属于 commit 后的内部协作，
-不可在组件 render、JSX 或 selector 中展开；否则 child 会在 render 阶段被解析。
+```ts
+class ConnectionViewModel extends ViewModel {
+  protected override onCreate(): void {
+    const subscription = connectionEvents.subscribe(() => {
+      this.notifyListeners('connection-event');
+    });
 
-## StrictMode
+    this.addDispose(() => subscription.unsubscribe());
+  }
+}
+```
 
-开发环境的 StrictMode 会额外调用 render，并可能执行 effect 的 setup → cleanup → setup，用来发现不纯 render 与缺少 cleanup 的 effect。
+If a render creates a provisional generation but never commits it, the Runtime schedules that zero-owner generation for cleanup at the next microtask. This also applies to `aliveForever`: an abandoned render is not a legitimate permanent owner.
 
-`view_model` 对此采用两条约束：
+If React later commits after a provisional generation has already been cleaned up, the generation snapshot changes. The hook prepares again and synchronously resubscribes to the current generation rather than retaining the abandoned object.
 
-1. render 准备不等同于正式 owner；只有 hook commit 订阅后，Scope Binding 才 addRef/bind。
-2. 单个 hook cleanup 只退订 listener，不减少 Binding owner；Scope cleanup 对 Binding 的 dispose 留出一次可取消的延迟窗口，同一次 StrictMode 探测中的重新挂载会取消释放。
+## Render and commit are separate phases
 
-因此业务 ViewModel 不应自行用“是否执行了两次构造”推断生产行为。副作用仍应放在明确的生命周期回调中，并保证 pause/resume 与 dispose 幂等。
+React may replay, interrupt, or abandon render. Only the `useSyncExternalStore` subscription installed during commit acquires the Scope Binding's owner relationship.
 
-## bind、pause、resume 与 dispose
+The platform hooks use this separation as follows:
 
-- **bind**：实例获得第一个有效 owner source 时进入绑定状态。
-- **pause**：应用、窗口或 Scope 暂时不可交互，但实例仍存在。
-- **resume**：暂停原因全部解除后恢复。
-- **dispose**：当前 generation 永久结束，必须释放计时器、订阅、文件句柄和原生资源。
+| Phase                  | Allowed behavior                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| render / snapshot read | Pure Spec preparation and pure selection from the parent ViewModel's exposed data.             |
+| commit subscription    | Acquire owner, activate the generation, run `onCreate`, and run `onBind`.                      |
+| effect/Scope cleanup   | Remove hook listeners; later dispose the Scope Binding when the owner boundary truly unmounts. |
 
-多个 Scope 或 parent 可以同时拥有同一 keyed 实例。单个 source 离开不应提前触发最终 unbind/dispose；最后一个 source 离开才可释放。
+A parent ViewModel's dependency getter is not render-safe. It calls `viewModelBinding.read/watch`, which performs a real acquire. Do not read such a getter from JSX, component render, or a `useViewModelSelector` selector. Let the parent expose the derived state that the UI needs.
 
-pause 也可能有多个来源，例如 React Native AppState 与上层手动暂停。每个 source 使用独立且稳定的 pause token：任一 token 仍处于 inactive，Runtime 就保持 paused；source cleanup 只移除自己的 token，不能意外唤醒其他 source。实现与业务回调都不应假设一次 resume 就能抵消所有 pause source。
+## Scope Binding lifetime versus hook subscription lifetime
 
-## React Native
+Each Scope has one stable Binding. All hooks below that Scope acquire through that same owner:
 
-默认适配 `AppState`：
+```text
+ViewModelScope
+└── one ViewModelBinding
+    ├── useViewModel(spec) subscription
+    ├── useReadViewModel(spec) lifecycle subscription
+    └── useViewModelSelector(spec, selector) subscription
+```
 
-- `active` → resume；
-- `inactive`、`background` 及其他非 active 状态 → pause。
+Removing one hook only removes its subscription record. It does not release the Binding's acquired ViewModel entry. The owner relationship remains until:
 
-页面失焦不等于组件卸载。如果使用 React Navigation，并希望页面被遮挡时暂停，应把导航 focus 状态转换为 Scope 生命周期源，而不是依赖 unmount。
+- the Scope Binding is disposed;
+- the Runtime force-recycles the generation; or
+- the Runtime itself is disposed.
 
-## Electron renderer
+This makes the Scope a stable React owner adapter and avoids destroying application modules during ordinary component churn. If a feature needs an independent owner lifetime, create an intentional Binding boundary. A nested Scope creates a new Binding, but it still shares the parent's Runtime unless a different Runtime is injected.
 
-默认窗口生命周期把以下条件同时满足视为 active：
+## StrictMode behavior
 
-- window 处于 focus；
-- document visibility 不是 hidden。
+React StrictMode may run extra renders and an effect `setup -> cleanup -> setup` sequence in development. `view_model` handles this without treating the probe cleanup as a real application shutdown:
 
-blur 或 hidden 会 pause；重新 focus 且 visible 才 resume。窗口关闭导致 React tree 卸载时，Scope 会 dispose Binding 并统一 release。
+1. render preparation does not activate or bind the provisional generation;
+2. the first committed hook subscription performs the acquire;
+3. Scope cleanup is delayed by one microtask;
+4. the matching StrictMode setup cancels that pending Binding disposal;
+5. a real unmount leaves the task uncancelled and releases the Binding;
+6. a Runtime owned by the root Scope is disposed one additional microtask later, allowing nested shared Bindings to release first.
 
-Electron main 没有 React commit，也没有 DOM visibility。它应使用 plain `ViewModelBinding`，并在服务停止、窗口协调器退出或 app shutdown 时显式 dispose Binding/Runtime。
+The lifecycle source uses a similar cancellable microtask when it removes its pause token. This prevents a StrictMode cleanup/setup probe from producing a false `onResume -> onPause` transition while the application is actually inactive.
 
-## recycle
+Application code must still be idempotent. Do not infer production instance counts from constructor calls observed in StrictMode, and ensure every external resource has a cleanup path.
 
-recycle 会越过普通 owner 引用，强制 dispose 某个 generation。它可能在仍挂载的组件中触发生命周期变化，也可能让 parent 的 getter 下一次解析到新 generation。
+## Activation and Binding callbacks
 
-Runtime 会先完成旧实例及其零 owner 独占依赖树的 dispose，再通知仍存活的 owner
-解析新 generation，避免新旧实例短暂同时占用同一个 IPC、端口或原生资源。
+The ViewModel hooks have precise meanings:
 
-调用前确认：
+### `onCreate()`
 
-- 实例是否使用显式 key 跨 Scope 共享；
-- 是否有 parent → child 边；
-- 是否仍有异步任务持有旧引用；
-- 所有调用方是否都接受同时失效。
+Runs once when the first Binding acquires a provisional generation. The object has already been attached to its generation-owned dependency Binding, so getter-based dependency resolution is available here.
 
-如果答案不明确，请换用新 key，而不是 recycle。
+If `onCreate` throws, acquisition fails and the Runtime disposes the failed generation and its dependency scope before rethrowing.
+
+### `onBind(bindingId)`
+
+Runs when a Binding id first becomes an owner of the generation. A keyed generation can receive several ids from React Scopes, plain Bindings, or parent dependency Bindings.
+
+### `onUnbind(bindingId)`
+
+Runs when that Binding id releases the generation. It does not mean the generation is about to dispose: other Bindings may still own it, or it may be retained by `aliveForever`.
+
+### `onPause()` and `onResume()`
+
+Run only on a Runtime transition between active and paused. Multiple pause tokens are aggregated, so adding a second token does not call `onPause` again, and removing one of several tokens does not call `onResume`.
+
+### `onDispose()`
+
+Runs once when the current generation permanently ends. The ViewModel is already marked disposed, so it must not resolve new dependencies or emit new state.
+
+After `onDispose`, cleanup functions registered with `addDispose` run in reverse registration order. The Runtime attempts all cleanup paths and aggregates multiple failures in `AggregateError` instead of abandoning the remaining cleanup.
+
+## Natural zero-owner disposal
+
+When a Binding releases a normal generation, the Runtime first calls `onUnbind`. If no owners remain and `aliveForever` is false, disposal is queued in a microtask.
+
+This small deferral allows an immediate reacquire of the same generation to cancel pending disposal. It does not make the instance generally long-lived: if no owner returns, the generation is removed from its cache and disposed.
+
+Disposal of a parent generation also disposes its generation-owned dependency Binding. Every child edge owned only through that Binding is released. A keyed child or a child owned through another parent/direct Binding may continue living.
+
+An `aliveForever` generation skips natural zero-owner disposal. It still ends on explicit recycle or Runtime disposal.
+
+## Notifications and generation snapshots
+
+`notifyListeners(action?)` increments a ViewModel version and synchronously enters the Runtime propagation transaction. Within one transaction, the Runtime deduplicates:
+
+- repeated notification delivery for the same handle;
+- parent dependency bubbling;
+- the same queued owner callback.
+
+`watch` snapshots include the ViewModel version. `read` snapshots include only generation/lifecycle identity. Therefore:
+
+- `useViewModel` rerenders for ordinary notifications;
+- `useReadViewModel` does not rerender for ordinary notifications;
+- both hooks update after force recycle because the generation changes;
+- `useViewModelSelector` suppresses equal selected values, except that a new generation still forces one resubscription update.
+
+`ViewModel.subscribe` and `StateViewModel.subscribeState` are direct subscriptions. They are invoked by the ViewModel itself and are not automatically owned by a Binding. Keep the returned unsubscribe function and clean it up explicitly.
+
+## Runtime-level pause tokens
+
+Pause is a property of `ViewModelRuntime`, not of a Scope or individual ViewModel owner.
+
+```ts
+const applicationBackground = Symbol('application-background');
+const rendererHidden = Symbol('renderer-hidden');
+
+runtime.pause(applicationBackground);
+runtime.pause(rendererHidden);
+runtime.resume(applicationBackground); // Still paused by rendererHidden.
+runtime.resume(rendererHidden); // Now the Runtime resumes.
+```
+
+The first token performs the active-to-paused transition and calls `onPause` on every activated generation. The last token removal calls `onResume` and flushes queued Binding/hook callbacks.
+
+While paused:
+
+- state and ViewModel actions may continue running;
+- ViewModel versions continue changing;
+- parent dependency propagation may continue;
+- Binding-delivered owner callbacks are coalesced until resume;
+- direct `subscribe`/`subscribeState` callbacks are not paused by the Runtime.
+
+This distinction prevents background UI churn without pretending that the application graph has stopped executing.
+
+Every lifecycle source must keep one stable token for its subscription lifetime. Cleanup removes only that source's token and cannot resume a Runtime that another source still pauses.
+
+### A Scope lifecycle affects the whole Runtime
+
+`ViewModelScope.lifecycle` is an adapter into `runtime.pause(token)` and `runtime.resume(token)`. A nested Scope that shares its parent's Runtime does not receive isolated pause state. If its lifecycle becomes inactive, every activated ViewModel in that Runtime is paused.
+
+For page focus behavior, choose deliberately:
+
+- use a separate Runtime if the entire page graph should pause independently;
+- keep one application Runtime and model focus as ordinary state if only page-specific work should change;
+- use a shared Runtime lifecycle source only when pausing the whole application graph is intended.
+
+## React Native lifecycle
+
+The React Native Scope converts `AppState` into a lifecycle source:
+
+- `active` means active;
+- `inactive`, `background`, `unknown`, and any other value mean inactive.
+
+The root Scope's lifecycle token therefore pauses the entire root Runtime when the application leaves the foreground. React Navigation blur is not an unmount and is not included automatically.
+
+## Electron renderer lifecycle
+
+The Electron renderer source considers the Runtime active only when both conditions hold:
+
+- the renderer window is focused;
+- `document.visibilityState` is not `hidden`.
+
+A blur or hidden document pauses the Runtime. It resumes only after focus and visibility are both active again. If neither `window` nor `document` is available, the default source is active and installs no listeners.
+
+Electron main has no React lifecycle adapter. Its owner must call `runtime.pause/resume` from explicit application events when that behavior is desired.
+
+## Force recycle
+
+`runtime.recycle(viewModel)` ends one concrete generation. `runtime.recycle(spec)` ends every current handle in that Runtime with the same Spec token and key. An unkeyed Spec may therefore recycle one private generation per Binding.
+
+Recycle:
+
+1. marks the generation disposed and removes it from caches;
+2. calls `onUnbind` for every current owner;
+3. runs `onDispose` and registered cleanup;
+4. disposes the old dependency Binding and releases child edges;
+5. notifies surviving owner Bindings that their handle ended;
+6. lets the next stable-Spec resolution create a fresh generation.
+
+The old generation is fully cleaned before owners resolve a new one. This prevents old and new objects from simultaneously holding the same IPC channel, native subscription, port, or other exclusive resource.
+
+Recycle ignores ordinary ownership and `aliveForever`, so use it only for deliberate shared invalidation. Prefer a new business key when old and new generations should coexist during a transition.
+
+## Runtime and application shutdown
+
+`runtime.dispose()` is the final boundary operation. It:
+
+- marks the Runtime disposed;
+- clears pause state and queued resume callbacks;
+- force-disposes every generation, including `aliveForever` instances;
+- clears keyed caches and dependency edges;
+- rejects later creation or acquisition.
+
+For an injected Runtime, the application composition root is responsible for disposing React owner Bindings first and the Runtime last. A root Scope that created its own Runtime performs this order automatically.
+
+In Electron main, use an explicit shutdown path:
+
+```ts
+const runtime = new ViewModelRuntime();
+const binding = runtime.createBinding({ id: 'electron-main' });
+
+app.on('before-quit', () => {
+  binding.dispose();
+  runtime.dispose();
+});
+```
+
+Both operations are idempotent. Cleanup implementations should be idempotent as well.
