@@ -1,0 +1,108 @@
+{
+  "name": "view_model",
+  "version": "0.1.0",
+  "description": "面向 React Native 与 Electron 客户端的 ViewModel、模块组合、依赖注入与自动生命周期框架。",
+  "keywords": [
+    "view-model",
+    "react-native",
+    "electron",
+    "state-management",
+    "dependency-injection",
+    "lifecycle"
+  ],
+  "homepage": "https://github.com/lwj1994/js_view_model#readme",
+  "bugs": {
+    "url": "https://github.com/lwj1994/js_view_model/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lwj1994/js_view_model.git"
+  },
+  "license": "MIT",
+  "packageManager": "npm@11.12.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "main": "./dist/core/index.cjs",
+  "module": "./dist/core/index.js",
+  "types": "./dist/types/core/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
+    "./core": {
+      "types": "./dist/types/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
+    "./react-native": {
+      "types": "./dist/types/react-native/index.d.ts",
+      "import": "./dist/react-native/index.js",
+      "require": "./dist/react-native/index.cjs"
+    },
+    "./electron": {
+      "types": "./dist/types/electron/index.d.ts",
+      "import": "./dist/electron/index.js",
+      "require": "./dist/electron/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsup && tsc -p tsconfig.build.json",
+    "clean": "rimraf dist coverage",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --no-file-parallelism",
+    "test:watch": "vitest --no-file-parallelism",
+    "test:package": "node scripts/test-package-exports.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm run test && npm run build && npm run test:package",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check"
+  },
+  "peerDependencies": {
+    "electron": ">=30",
+    "react": ">=18.3.1 <20",
+    "react-native": ">=0.76"
+  },
+  "peerDependenciesMeta": {
+    "electron": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.18",
+    "@types/react-test-renderer": "19.1.0",
+    "esbuild": "0.28.1",
+    "prettier": "3.9.6",
+    "react": "19.2.8",
+    "react-test-renderer": "19.2.8",
+    "rimraf": "6.1.2",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
+  }
+}
