@@ -16,6 +16,7 @@
 
 ### Changed
 
+- npm 包使用公开 scoped 名称 `@lwjlol/view_model` 发布。
 - root Binding owner source 现会沿已解析的 parent-child 图传播，并实时镜像后续 bind/unbind 变化。
 - 一次完整的同步通知级联现会共享同一 transaction，每个 callback 按 Binding 去重，同时保留对不同 Binding 的投递。异步通知会开启新 transaction。
 - 新增结构镜像的英文与中文模块文档。

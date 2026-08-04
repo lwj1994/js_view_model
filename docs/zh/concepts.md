@@ -55,7 +55,7 @@ builder 结果必须是该显式 type 或其子类的实例。带 protected cons
 应在模块顶层声明一次 Spec，让 builder 与 options 保持稳定：
 
 ```ts
-import { ViewModel, viewModelSpec } from 'view_model/core';
+import { ViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 class CartViewModel extends ViewModel {
   // ...
@@ -278,4 +278,4 @@ Recycle 会忽略当前 owners 与 `aliveForever`。它适合 logout、disconnec
 - attach 后通过 parent getter 解析 child module。
 - 永远不要在 React render 或 selection 中使用 dependency getter。
 - 只有明确接受 Runtime 范围影响时才使用 `aliveForever` 与 recycle。
-- 不要导入或记录 `view_model/react` package entry；它有意不对外公开。
+- 不要导入或记录 `@lwjlol/view_model/react` package entry；它有意不对外公开。

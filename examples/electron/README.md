@@ -5,8 +5,8 @@
 This example documents the boundary between an Electron renderer, preload,
 and the main process:
 
-- the renderer uses the `view_model/electron` Scope and hooks;
-- the main process uses a plain Binding from `view_model/core`;
+- the renderer uses the `@lwjlol/view_model/electron` Scope and hooks;
+- the main process uses a plain Binding from `@lwjlol/view_model/core`;
 - preload exposes a narrow IPC bridge;
 - processes exchange serializable DTOs, never ViewModel objects.
 
@@ -37,8 +37,12 @@ identity remain isolated.
 
 ```tsx
 import { createRoot } from 'react-dom/client';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/electron';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/electron';
 
 type CounterState = Readonly<{
   count: number;
@@ -93,7 +97,7 @@ owner adapter:
 
 ```ts
 import { app, BrowserWindow } from 'electron';
-import { ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { ViewModel, ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 class WindowCoordinator extends ViewModel {
   readonly #windows = new Set<BrowserWindow>();

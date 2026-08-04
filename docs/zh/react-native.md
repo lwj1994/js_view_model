@@ -2,7 +2,7 @@
 
 [English](../react-native.md) · [文档索引](./README.md)
 
-> `view_model/react-native` 是正式支持的公开 React Native 入口。它面向 React Native 应用，不适用于 React DOM 或通用 Web rendering。
+> `@lwjlol/view_model/react-native` 是正式支持的公开 React Native 入口。它面向 React Native 应用，不适用于 React DOM 或通用 Web rendering。
 
 应用 DI 图属于 `ViewModelRuntime`。`ViewModelScope` 是该对象图的 React Native owner adapter：它创建 `ViewModelBinding`、将 platform lifecycle event 连接到 Runtime，并向 hooks 提供 Runtime 与 Binding。
 
@@ -20,17 +20,17 @@ import {
   useViewModel,
   useViewModelSelector,
   viewModelSpec,
-} from 'view_model/react-native';
+} from '@lwjlol/view_model/react-native';
 ```
 
-本库有意不提供公开 `view_model/react` 入口。共享 React implementation 是内部实现，不承诺支持 React Web、SSR、React Server Components 或 browser hydration。
+本库有意不提供公开 `@lwjlol/view_model/react` 入口。共享 React implementation 是内部实现，不承诺支持 React Web、SSR、React Server Components 或 browser hydration。
 
 ## 先选择 Runtime 边界
 
 对于只有一个 React root 的简单应用，root Scope 可以创建并持有自己的 Runtime：
 
 ```tsx
-import { ViewModelScope } from 'view_model/react-native';
+import { ViewModelScope } from '@lwjlol/view_model/react-native';
 
 export default function App() {
   return (
@@ -46,7 +46,7 @@ export default function App() {
 如果 React 与非 React owner 需要共享应用级 DI，应在 composition root 创建 Runtime 并注入：
 
 ```tsx
-import { ViewModelRuntime, ViewModelScope } from 'view_model/react-native';
+import { ViewModelRuntime, ViewModelScope } from '@lwjlol/view_model/react-native';
 
 export const applicationRuntime = new ViewModelRuntime();
 
@@ -78,7 +78,7 @@ bootstrap.dispose();
 优先在模块顶层用显式 ViewModel type 声明 Spec。type 会为独立创建的 Spec 提供稳定 identity；复用同一声明也能让 builder 与 options 保持确定：
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/react-native';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/react-native';
 
 interface CounterState {
   readonly count: number;
@@ -109,7 +109,7 @@ export const counterSpec = viewModelSpec(CounterViewModel, () => new CounterView
 
 ```tsx
 import { Button, Text, View } from 'react-native';
-import { useViewModel } from 'view_model/react-native';
+import { useViewModel } from '@lwjlol/view_model/react-native';
 
 function CounterPanel() {
   const counter = useViewModel(counterSpec);
@@ -131,7 +131,7 @@ command-only component 应使用 `useReadViewModel`：
 
 ```tsx
 import { Button } from 'react-native';
-import { useReadViewModel } from 'view_model/react-native';
+import { useReadViewModel } from '@lwjlol/view_model/react-native';
 
 function IncrementButton() {
   const counter = useReadViewModel(counterSpec);
@@ -346,7 +346,7 @@ runtime.dispose();
 
 ## 检查清单
 
-- 从 `view_model/react-native` 导入，永远不要使用 `view_model/react`。
+- 从 `@lwjlol/view_model/react-native` 导入，永远不要使用 `@lwjlol/view_model/react`。
 - 明确 Runtime 由 Scope 持有还是应用持有。
 - 使用一个共享 Runtime 与显式 key 实现应用全局 DI。
 - 将 Scope 视为一个 React owner Binding，而不是 DI 容器。

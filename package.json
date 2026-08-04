@@ -1,5 +1,5 @@
 {
-  "name": "view_model",
+  "name": "@lwjlol/view_model",
   "version": "0.2.0",
   "description": "Application-wide dependency injection, ViewModel composition, state management, and automatic lifecycle for React Native and Electron.",
   "keywords": [

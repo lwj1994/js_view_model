@@ -9,6 +9,8 @@ Application-wide dependency injection, functional-module composition, state
 management, and automatic lifecycle management for **React Native** and
 **Electron**.
 
+Published on npm as [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model).
+
 `view_model` is not limited to screen state. A feature, repository, service,
 coordinator, device connection, or domain capability can all be managed
 ViewModels. They resolve one another lazily through `viewModelBinding`, share
@@ -27,7 +29,12 @@ its composition root and use plain bindings from bootstrap code, background
 services, Electron main, tests, or any other TypeScript host:
 
 ```ts
-import { StateViewModel, ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import {
+  StateViewModel,
+  ViewModel,
+  ViewModelRuntime,
+  viewModelSpec,
+} from '@lwjlol/view_model/core';
 
 type SessionState = Readonly<{ token: string | null }>;
 
@@ -115,22 +122,22 @@ paused screen/window, or model focus as ordinary application state.
 
 ## Supported entry points
 
-| Environment                                 | Entry point               | Status          |
-| ------------------------------------------- | ------------------------- | --------------- |
-| Platform-neutral TypeScript / Electron main | `view_model/core`         | Supported       |
-| React Native                                | `view_model/react-native` | Supported       |
-| Electron renderer                           | `view_model/electron`     | Supported       |
-| Ordinary React Web / SSR                    | None                      | **Unsupported** |
+| Environment                                 | Entry point                       | Status          |
+| ------------------------------------------- | --------------------------------- | --------------- |
+| Platform-neutral TypeScript / Electron main | `@lwjlol/view_model/core`         | Supported       |
+| React Native                                | `@lwjlol/view_model/react-native` | Supported       |
+| Electron renderer                           | `@lwjlol/view_model/electron`     | Supported       |
+| Ordinary React Web / SSR                    | None                              | **Unsupported** |
 
 The platform entries re-export the core API. Import ViewModel classes and Specs
-from `view_model/core`, and import Scope/hooks from the relevant platform entry
+from `@lwjlol/view_model/core`, and import Scope/hooks from the relevant platform entry
 to keep the runtime boundary visible. There is deliberately no
-`view_model/react` export.
+`@lwjlol/view_model/react` export.
 
 ## Installation
 
 ```sh
-npm install view_model@0.2.0
+npm install @lwjlol/view_model@0.2.0
 ```
 
 React Native applications must provide compatible `react` and `react-native`
@@ -145,8 +152,12 @@ builders and options stable:
 
 ```tsx
 import { Button, Text, View } from 'react-native';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/react-native';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/react-native';
 
 class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   public constructor() {
@@ -194,8 +205,12 @@ focused and the document is visible:
 
 ```tsx
 import { createRoot } from 'react-dom/client';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/electron';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/electron';
 
 class WindowCounter extends StateViewModel<number> {
   public constructor() {

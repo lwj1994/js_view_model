@@ -11,7 +11,7 @@ React 不属于基础 `ViewModel` contract。React Native 与 Electron renderer 
 模块需要自定义字段或通知行为时，继承 `ViewModel`。
 
 ```ts
-import { ViewModel, viewModelSpec } from 'view_model/core';
+import { ViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 class ConnectionViewModel extends ViewModel {
   #status: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
@@ -86,7 +86,7 @@ ViewModel 在投递通知前递增 version。即使一个 listener 抛错，它�
 不可变 snapshot 优先使用 `StateViewModel`。
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/core';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 type ProfileState = Readonly<{
   displayName: string;

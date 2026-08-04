@@ -5,11 +5,11 @@ events through IPC, never ViewModel, Binding, Runtime, or Spec object references
 
 ## Renderer
 
-Use `view_model/electron` for renderer Scope and hooks:
+Use `@lwjlol/view_model/electron` for renderer Scope and hooks:
 
 ```tsx
 import { createRoot } from 'react-dom/client';
-import { ViewModelScope } from 'view_model/electron';
+import { ViewModelScope } from '@lwjlol/view_model/electron';
 
 createRoot(document.getElementById('root')!).render(
   <ViewModelScope>
@@ -54,7 +54,7 @@ appropriate.
 Electron main has no React commit phase. Use core directly:
 
 ```ts
-import { ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 const runtime = new ViewModelRuntime();
 const binding = runtime.createBinding({ id: 'electron-main' });

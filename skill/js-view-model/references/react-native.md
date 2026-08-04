@@ -1,14 +1,14 @@
 # React Native integration
 
-Use `view_model/react-native` for Scope and hooks. It re-exports the core API,
-but importing ViewModel classes and Specs from `view_model/core` keeps the
+Use `@lwjlol/view_model/react-native` for Scope and hooks. It re-exports the core API,
+but importing ViewModel classes and Specs from `@lwjlol/view_model/core` keeps the
 platform boundary explicit.
 
 ## Root setup
 
 ```tsx
-import { ViewModelRuntime } from 'view_model/core';
-import { ViewModelScope } from 'view_model/react-native';
+import { ViewModelRuntime } from '@lwjlol/view_model/core';
+import { ViewModelScope } from '@lwjlol/view_model/react-native';
 
 export const appRuntime = new ViewModelRuntime();
 

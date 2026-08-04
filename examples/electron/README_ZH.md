@@ -4,8 +4,8 @@
 
 本示例说明 Electron renderer、preload 与 main 进程之间的正确边界：
 
-- renderer 使用 `view_model/electron` 的 Scope 与 hooks；
-- main 进程使用 `view_model/core` 的 plain Binding；
+- renderer 使用 `@lwjlol/view_model/electron` 的 Scope 与 hooks；
+- main 进程使用 `@lwjlol/view_model/core` 的 plain Binding；
 - preload 暴露窄而明确的 IPC bridge；
 - 进程之间只交换可序列化 DTO，不传递 ViewModel 对象。
 
@@ -32,8 +32,12 @@ Runtime、Binding、Spec 或 ViewModel 对象都不能跨 IPC。每个 renderer 
 
 ```tsx
 import { createRoot } from 'react-dom/client';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/electron';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/electron';
 
 type CounterState = Readonly<{
   count: number;
@@ -85,7 +89,7 @@ Main 进程不使用 React 或 `ViewModelScope`。它以 plain Binding 作为 ow
 
 ```ts
 import { app, BrowserWindow } from 'electron';
-import { ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { ViewModel, ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 class WindowCoordinator extends ViewModel {
   readonly #windows = new Set<BrowserWindow>();

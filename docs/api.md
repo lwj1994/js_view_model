@@ -6,14 +6,14 @@
 
 ## Package entry points
 
-| Import                    | Environment                                                     | Contents                                                                         |
-| ------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `view_model`              | non-React/core                                                  | Same public core surface as `view_model/core`.                                   |
-| `view_model/core`         | React Native plain owners, Electron main, tests, shared modules | ViewModel classes, Specs, Runtime, Binding, types, and errors.                   |
-| `view_model/react-native` | React Native                                                    | All core exports plus the React Native Scope, hooks, and AppState adapter.       |
-| `view_model/electron`     | Electron renderer                                               | All core exports plus the Electron renderer Scope, hooks, and lifecycle adapter. |
+| Import                            | Environment                                                     | Contents                                                                         |
+| --------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `@lwjlol/view_model`              | non-React/core                                                  | Same public core surface as `@lwjlol/view_model/core`.                           |
+| `@lwjlol/view_model/core`         | React Native plain owners, Electron main, tests, shared modules | ViewModel classes, Specs, Runtime, Binding, types, and errors.                   |
+| `@lwjlol/view_model/react-native` | React Native                                                    | All core exports plus the React Native Scope, hooks, and AppState adapter.       |
+| `@lwjlol/view_model/electron`     | Electron renderer                                               | All core exports plus the Electron renderer Scope, hooks, and lifecycle adapter. |
 
-The package intentionally does not export `view_model/react`. The internal React implementation is shared only by the two platform adapters and is not a general React Web contract.
+The package intentionally does not export `@lwjlol/view_model/react`. The internal React implementation is shared only by the two platform adapters and is not a general React Web contract.
 
 ## Core architecture
 
@@ -39,7 +39,7 @@ Keyed identity, dependency propagation, and Runtime pause are all Runtime-local.
 All managed modules extend the abstract `ViewModel` base class:
 
 ```ts
-import { ViewModel, viewModelSpec } from 'view_model/core';
+import { ViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 class CounterViewModel extends ViewModel {
   public count = 0;
@@ -539,7 +539,7 @@ type ViewModelEquality<Selection> = (previous: Selection, next: Selection) => bo
 
 ## React Native API
 
-`view_model/react-native` re-exports all core symbols and adds the following.
+`@lwjlol/view_model/react-native` re-exports all core symbols and adds the following.
 
 ### `ViewModelScope`
 
@@ -584,7 +584,7 @@ interface ViewModelLifecycleSource {
 
 ## Electron renderer API
 
-`view_model/electron` re-exports all core symbols and adds the following.
+`@lwjlol/view_model/electron` re-exports all core symbols and adds the following.
 
 ### `ViewModelScope`
 
@@ -695,7 +695,7 @@ The following import is intentionally unavailable:
 
 ```ts
 // Unsupported: no public Web/React entry point exists.
-import { ViewModelScope } from 'view_model/react';
+import { ViewModelScope } from '@lwjlol/view_model/react';
 ```
 
 The current package does not promise:

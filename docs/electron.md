@@ -2,7 +2,7 @@
 
 [简体中文](./zh/electron.md) · [Documentation index](./README.md)
 
-> `view_model/electron` is the supported public Electron renderer entry point. It does not imply support for ordinary React Web applications.
+> `@lwjlol/view_model/electron` is the supported public Electron renderer entry point. It does not imply support for ordinary React Web applications.
 
 Electron has several JavaScript environments with hard process and security
 boundaries. Every environment that uses `view_model` owns its own
@@ -13,11 +13,11 @@ explicit, serializable IPC contracts rather than shared ViewModel objects.
 
 Use the package differently in each Electron environment:
 
-| Environment | Recommended API       | Responsibility                                                                      |
-| ----------- | --------------------- | ----------------------------------------------------------------------------------- |
-| main        | `view_model/core`     | Application services, windows, tray, updates, and other plain Binding owners.       |
-| preload     | narrow IPC bridge     | Validate and expose a small serializable API; do not leak ViewModel objects.        |
-| renderer    | `view_model/electron` | Renderer Runtime, React Scope owner adapter, hooks, and focus/visibility lifecycle. |
+| Environment | Recommended API               | Responsibility                                                                      |
+| ----------- | ----------------------------- | ----------------------------------------------------------------------------------- |
+| main        | `@lwjlol/view_model/core`     | Application services, windows, tray, updates, and other plain Binding owners.       |
+| preload     | narrow IPC bridge             | Validate and expose a small serializable API; do not leak ViewModel objects.        |
+| renderer    | `@lwjlol/view_model/electron` | Renderer Runtime, React Scope owner adapter, hooks, and focus/visibility lifecycle. |
 
 ```text
 Electron main process
@@ -48,17 +48,17 @@ import {
   useViewModel,
   useViewModelSelector,
   viewModelSpec,
-} from 'view_model/electron';
+} from '@lwjlol/view_model/electron';
 ```
 
-There is no public `view_model/react` entry point. Renderer support is intentionally exposed through `view_model/electron` so its platform contract remains explicit.
+There is no public `@lwjlol/view_model/react` entry point. Renderer support is intentionally exposed through `@lwjlol/view_model/electron` so its platform contract remains explicit.
 
 ## Renderer Runtime and Scope
 
 For one renderer React root, the simplest setup lets the Scope create and own the Runtime:
 
 ```tsx
-import { ViewModelScope } from 'view_model/electron';
+import { ViewModelScope } from '@lwjlol/view_model/electron';
 
 root.render(
   <ViewModelScope>
@@ -72,7 +72,7 @@ The Scope is an owner adapter, not the DI container. Internally it creates one B
 Create and inject a Runtime when renderer-level DI must also be used by plain owners:
 
 ```tsx
-import { ViewModelRuntime, ViewModelScope } from 'view_model/electron';
+import { ViewModelRuntime, ViewModelScope } from '@lwjlol/view_model/electron';
 
 const rendererRuntime = new ViewModelRuntime();
 
@@ -90,7 +90,7 @@ An injected Runtime remains caller-owned. Unmount the React root so the Scope Bi
 Define stable Specs at module scope. Use an explicit key when several Bindings in the renderer Runtime must share one generation:
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/electron';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/electron';
 
 interface DocumentState {
   readonly dirty: boolean;
@@ -137,7 +137,7 @@ A blur or hidden document pauses the Runtime. It resumes only after focus and vi
 You can explicitly provide the minimal targets, which is useful for tests and isolated renderer hosts:
 
 ```tsx
-import { ViewModelScope, createElectronRendererLifecycleSource } from 'view_model/electron';
+import { ViewModelScope, createElectronRendererLifecycleSource } from '@lwjlol/view_model/electron';
 
 const lifecycle = createElectronRendererLifecycleSource({
   window,
@@ -255,7 +255,7 @@ Validate IPC input in main and return serializable DTOs. Do not expose `ipcRende
 Electron main has no React Scope, render phase, or DOM lifecycle. Create a Runtime at the main application composition root and create plain Bindings for explicit owners:
 
 ```ts
-import { ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { ViewModel, ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 class WindowCoordinator extends ViewModel {
   public async restoreWindows(): Promise<void> {
@@ -358,7 +358,7 @@ A root Scope that created its own Runtime performs the Binding-then-Runtime sequ
 
 ## Checklist
 
-- Use `view_model/core` in main and `view_model/electron` in renderer.
+- Use `@lwjlol/view_model/core` in main and `@lwjlol/view_model/electron` in renderer.
 - Keep one Runtime object inside one JavaScript process and explicit ownership boundary.
 - Treat `ViewModelScope` as a React Binding adapter, not as the DI container.
 - Share application modules with stable Specs, explicit keys, and one Runtime.
@@ -366,6 +366,6 @@ A root Scope that created its own Runtime performs the Binding-then-Runtime sequ
 - Register IPC listeners in `onCreate` and remove them through `addDispose`.
 - Remember that any Scope lifecycle token pauses its entire Runtime.
 - Communicate across main/preload/renderer with validated serializable data.
-- Never import `view_model/react` or claim ordinary Web support.
+- Never import `@lwjlol/view_model/react` or claim ordinary Web support.
 
 See [examples/electron](../examples/electron/README.md) for the renderer, preload, and main-process boundaries.

@@ -4,11 +4,11 @@
 
 `view_model` is a TypeScript runtime for stateful application modules, dependency injection, notifications, and automatic lifetime management. It supports:
 
-- platform-independent TypeScript code and Electron main through `view_model/core`;
-- React Native through `view_model/react-native`;
-- Electron renderer through `view_model/electron`.
+- platform-independent TypeScript code and Electron main through `@lwjlol/view_model/core`;
+- React Native through `@lwjlol/view_model/react-native`;
+- Electron renderer through `@lwjlol/view_model/electron`.
 
-It does not provide a general React Web, SSR, or React Server Components entry point. In particular, there is no public `view_model/react` export.
+It does not provide a general React Web, SSR, or React Server Components entry point. In particular, there is no public `@lwjlol/view_model/react` export.
 
 The core runtime does not depend on React. A `ViewModelScope` is only a React adapter: it creates or receives a `ViewModelRuntime`, owns a `ViewModelBinding`, and connects platform lifecycle events to that runtime. Application services and global dependency graphs can be created and used without any UI.
 
@@ -17,7 +17,7 @@ The core runtime does not depend on React. A `ViewModelScope` is only a React ad
 Install the published package in the React Native or Electron application:
 
 ```sh
-npm install view_model@0.2.0
+npm install @lwjlol/view_model@0.2.0
 ```
 
 The host application supplies the relevant peer dependencies: React and React Native for a React Native app, or React and Electron for an Electron renderer. Electron main can use the core entry without React.
@@ -33,7 +33,7 @@ import {
   ViewModelRuntime,
   viewModelSpec,
   type ViewModelSpec,
-} from 'view_model/core';
+} from '@lwjlol/view_model/core';
 ```
 
 Use a platform entry for its Scope and hooks:
@@ -44,7 +44,7 @@ import {
   useReadViewModel,
   useViewModel,
   useViewModelSelector,
-} from 'view_model/react-native';
+} from '@lwjlol/view_model/react-native';
 ```
 
 ```ts
@@ -53,17 +53,17 @@ import {
   useReadViewModel,
   useViewModel,
   useViewModelSelector,
-} from 'view_model/electron';
+} from '@lwjlol/view_model/electron';
 ```
 
-The platform entries re-export the core API, but importing models from `view_model/core` and UI adapters from the platform entry makes process and platform boundaries easier to review.
+The platform entries re-export the core API, but importing models from `@lwjlol/view_model/core` and UI adapters from the platform entry makes process and platform boundaries easier to review.
 
 ## 2. Define a ViewModel and a stable Spec
 
 `StateViewModel<State>` stores one state snapshot and notifies its owners when the snapshot changes.
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/core';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 type CounterState = Readonly<{
   count: number;
@@ -94,7 +94,7 @@ The builder and constructor must be pure. They may initialize in-memory fields, 
 A `ViewModelRuntime` is an application container within one JavaScript realm. A `ViewModelBinding` is an owner of every ViewModel it resolves.
 
 ```ts
-import { ViewModelRuntime } from 'view_model/core';
+import { ViewModelRuntime } from '@lwjlol/view_model/core';
 
 const runtime = new ViewModelRuntime();
 
@@ -132,7 +132,7 @@ Always dispose long-lived plain bindings. A Runtime should also be disposed when
 ViewModels are not limited to screen state. A stable Runtime and Binding can own application services even when no React tree exists.
 
 ```ts
-import { ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { ViewModel, ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 class SessionViewModel extends ViewModel {
   public async requireAccessToken(): Promise<string> {
@@ -174,8 +174,12 @@ Define models and Specs outside render, then place a Scope around the React owne
 
 ```tsx
 import { Button, Text, View } from 'react-native';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/react-native';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/react-native';
 
 class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   public constructor() {
@@ -218,7 +222,7 @@ The hook usage is the same, but imports come from the Electron entry:
 
 ```tsx
 import { createRoot } from 'react-dom/client';
-import { ViewModelScope } from 'view_model/electron';
+import { ViewModelScope } from '@lwjlol/view_model/electron';
 
 createRoot(document.getElementById('root')!).render(
   <ViewModelScope>
@@ -227,7 +231,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-The default renderer lifecycle considers the Runtime active only while the window is focused and the document is not hidden. Electron main does not use this Scope; it uses `view_model/core` and plain bindings.
+The default renderer lifecycle considers the Runtime active only while the window is focused and the document is not hidden. Electron main does not use this Scope; it uses `@lwjlol/view_model/core` and plain bindings.
 
 ## 7. Pick the narrowest hook
 

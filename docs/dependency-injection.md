@@ -36,7 +36,12 @@ After a ViewModel has been built and attached, the Runtime gives it a private de
 Create an application Runtime and root Binding when the dependency container must exist independently of UI.
 
 ```ts
-import { ViewModel, ViewModelRuntime, viewModelSpec, type ViewModelSpec } from 'view_model/core';
+import {
+  ViewModel,
+  ViewModelRuntime,
+  viewModelSpec,
+  type ViewModelSpec,
+} from '@lwjlol/view_model/core';
 
 class SessionViewModel extends ViewModel {
   public async requireAccessToken(): Promise<string> {

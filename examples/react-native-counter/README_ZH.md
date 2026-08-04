@@ -29,8 +29,12 @@ adapter：Scope 向 hooks 提供一个稳定 Binding，并把 React commit/unmou
 
 ```tsx
 import { Button, SafeAreaView, Text } from 'react-native';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/react-native';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/react-native';
 
 type CounterState = Readonly<{
   count: number;

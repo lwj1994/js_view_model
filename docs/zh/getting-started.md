@@ -4,11 +4,11 @@
 
 `view_model` 是一个面向有状态应用模块的 TypeScript Runtime，提供依赖注入、通知与自动生命周期管理。它支持：
 
-- 通过 `view_model/core` 支持平台无关的 TypeScript 代码与 Electron main；
-- 通过 `view_model/react-native` 支持 React Native；
-- 通过 `view_model/electron` 支持 Electron renderer。
+- 通过 `@lwjlol/view_model/core` 支持平台无关的 TypeScript 代码与 Electron main；
+- 通过 `@lwjlol/view_model/react-native` 支持 React Native；
+- 通过 `@lwjlol/view_model/electron` 支持 Electron renderer。
 
-它不提供通用 React Web、SSR 或 React Server Components 入口。尤其不存在公开的 `view_model/react` 导出。
+它不提供通用 React Web、SSR 或 React Server Components 入口。尤其不存在公开的 `@lwjlol/view_model/react` 导出。
 
 核心 Runtime 不依赖 React。`ViewModelScope` 只是 React adapter：它创建或接收 `ViewModelRuntime`，持有一个 `ViewModelBinding`，并把平台生命周期事件连接到该 Runtime。即使完全没有 UI，也可以创建和使用应用 service 与全局依赖图。
 
@@ -17,7 +17,7 @@
 在 React Native 或 Electron 应用中安装已发布的正式包：
 
 ```sh
-npm install view_model@0.2.0
+npm install @lwjlol/view_model@0.2.0
 ```
 
 相关 peer dependency 由宿主应用提供：React Native 应用提供 React 与 React Native；Electron renderer 提供 React 与 Electron。Electron main 可以在不依赖 React 的情况下使用 core 入口。
@@ -33,7 +33,7 @@ import {
   ViewModelRuntime,
   viewModelSpec,
   type ViewModelSpec,
-} from 'view_model/core';
+} from '@lwjlol/view_model/core';
 ```
 
 Scope 与 hook 使用平台入口：
@@ -44,7 +44,7 @@ import {
   useReadViewModel,
   useViewModel,
   useViewModelSelector,
-} from 'view_model/react-native';
+} from '@lwjlol/view_model/react-native';
 ```
 
 ```ts
@@ -53,17 +53,17 @@ import {
   useReadViewModel,
   useViewModel,
   useViewModelSelector,
-} from 'view_model/electron';
+} from '@lwjlol/view_model/electron';
 ```
 
-平台入口会重新导出 core API；但从 `view_model/core` 导入 model，从平台入口导入 UI adapter，更容易在 review 时识别进程与平台边界。
+平台入口会重新导出 core API；但从 `@lwjlol/view_model/core` 导入 model，从平台入口导入 UI adapter，更容易在 review 时识别进程与平台边界。
 
 ## 2. 定义 ViewModel 与稳定 Spec
 
 `StateViewModel<State>` 保存一个 state snapshot，并在 snapshot 变化时通知 owner。
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/core';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 type CounterState = Readonly<{
   count: number;
@@ -94,7 +94,7 @@ builder 与 constructor 必须保持纯净。它们可以初始化内存字段�
 `ViewModelRuntime` 是单个 JavaScript realm 内的应用容器。`ViewModelBinding` 是它所解析的每个 ViewModel 的 owner。
 
 ```ts
-import { ViewModelRuntime } from 'view_model/core';
+import { ViewModelRuntime } from '@lwjlol/view_model/core';
 
 const runtime = new ViewModelRuntime();
 
@@ -132,7 +132,7 @@ runtime.dispose();
 ViewModel 不只用于 screen state。即使不存在 React tree，稳定的 Runtime 与 Binding 也能持有应用 service。
 
 ```ts
-import { ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { ViewModel, ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 class SessionViewModel extends ViewModel {
   public async requireAccessToken(): Promise<string> {
@@ -174,8 +174,12 @@ React Native 或 Electron renderer Scope 可以接收同一个 Runtime，并解�
 
 ```tsx
 import { Button, Text, View } from 'react-native';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/react-native';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/react-native';
 
 class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   public constructor() {
@@ -218,7 +222,7 @@ hook 用法相同，但从 Electron 入口导入：
 
 ```tsx
 import { createRoot } from 'react-dom/client';
-import { ViewModelScope } from 'view_model/electron';
+import { ViewModelScope } from '@lwjlol/view_model/electron';
 
 createRoot(document.getElementById('root')!).render(
   <ViewModelScope>
@@ -227,7 +231,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-默认 renderer 生命周期仅在窗口 focused 且 document 未 hidden 时把 Runtime 视为 active。Electron main 不使用这个 Scope；它使用 `view_model/core` 与 plain Binding。
+默认 renderer 生命周期仅在窗口 focused 且 document 未 hidden 时把 Runtime 视为 active。Electron main 不使用这个 Scope；它使用 `@lwjlol/view_model/core` 与 plain Binding。
 
 ## 7. 选择最窄的 hook
 

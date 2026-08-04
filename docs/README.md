@@ -65,6 +65,6 @@ and domain capabilities can use the same runtime without React.
 
 ## Support boundary
 
-Only `view_model/core`, `view_model/react-native`, and `view_model/electron` are
-public application entry points. There is no `view_model/react`, and this
+Only `@lwjlol/view_model/core`, `@lwjlol/view_model/react-native`, and `@lwjlol/view_model/electron` are
+public application entry points. There is no `@lwjlol/view_model/react`, and this
 package makes no React Web, SSR, RSC, or browser hydration promise.

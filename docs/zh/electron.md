@@ -2,7 +2,7 @@
 
 [English](../electron.md) · [文档索引](./README.md)
 
-> `view_model/electron` 是正式支持的公开 Electron renderer 入口，不表示本库支持普通 React Web 应用。
+> `@lwjlol/view_model/electron` 是正式支持的公开 Electron renderer 入口，不表示本库支持普通 React Web 应用。
 
 Electron 包含多个具有严格进程与安全边界的 JavaScript 环境。每个使用 `view_model` 的环境都持有自己的 `ViewModelRuntime`；应用模块通过显式、可序列化的 IPC contract 在环境间通信，而不是共享 ViewModel 对象。
 
@@ -10,11 +10,11 @@ Electron 包含多个具有严格进程与安全边界的 JavaScript 环境。�
 
 不同 Electron 环境应采用不同的 package 用法：
 
-| 环境     | 推荐 API              | 职责                                                                                  |
-| -------- | --------------------- | ------------------------------------------------------------------------------------- |
-| main     | `view_model/core`     | 应用服务、window、tray、update 与其他 plain Binding owner。                           |
-| preload  | 窄 IPC bridge         | 校验并暴露小型可序列化 API；不要泄漏 ViewModel 对象。                                 |
-| renderer | `view_model/electron` | renderer Runtime、React Scope owner adapter、hooks，以及 focus/visibility lifecycle。 |
+| 环境     | 推荐 API                      | 职责                                                                                  |
+| -------- | ----------------------------- | ------------------------------------------------------------------------------------- |
+| main     | `@lwjlol/view_model/core`     | 应用服务、window、tray、update 与其他 plain Binding owner。                           |
+| preload  | 窄 IPC bridge                 | 校验并暴露小型可序列化 API；不要泄漏 ViewModel 对象。                                 |
+| renderer | `@lwjlol/view_model/electron` | renderer Runtime、React Scope owner adapter、hooks，以及 focus/visibility lifecycle。 |
 
 ```text
 Electron main process
@@ -45,17 +45,17 @@ import {
   useViewModel,
   useViewModelSelector,
   viewModelSpec,
-} from 'view_model/electron';
+} from '@lwjlol/view_model/electron';
 ```
 
-本库没有公开 `view_model/react` 入口。renderer support 有意通过 `view_model/electron` 暴露，使其 platform contract 始终明确。
+本库没有公开 `@lwjlol/view_model/react` 入口。renderer support 有意通过 `@lwjlol/view_model/electron` 暴露，使其 platform contract 始终明确。
 
 ## Renderer Runtime 与 Scope
 
 对于一个 renderer React root，最简单的 setup 是让 Scope 创建并持有 Runtime：
 
 ```tsx
-import { ViewModelScope } from 'view_model/electron';
+import { ViewModelScope } from '@lwjlol/view_model/electron';
 
 root.render(
   <ViewModelScope>
@@ -69,7 +69,7 @@ Scope 是 owner adapter，不是 DI 容器。其内部创建一个 Binding 并�
 当 renderer-level DI 也需要由 plain owner 使用时，应创建并注入 Runtime：
 
 ```tsx
-import { ViewModelRuntime, ViewModelScope } from 'view_model/electron';
+import { ViewModelRuntime, ViewModelScope } from '@lwjlol/view_model/electron';
 
 const rendererRuntime = new ViewModelRuntime();
 
@@ -87,7 +87,7 @@ root.render(
 在模块顶层定义稳定 Spec。若 renderer Runtime 内有多个 Binding 需要共享一个 generation，应使用显式 key：
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/electron';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/electron';
 
 interface DocumentState {
   readonly dirty: boolean;
@@ -134,7 +134,7 @@ blur 或 hidden document 会 pause Runtime。只有 focus 与 visibility 同时�
 可以显式提供最小 target，这对 test 与隔离 renderer host 很有用：
 
 ```tsx
-import { ViewModelScope, createElectronRendererLifecycleSource } from 'view_model/electron';
+import { ViewModelScope, createElectronRendererLifecycleSource } from '@lwjlol/view_model/electron';
 
 const lifecycle = createElectronRendererLifecycleSource({
   window,
@@ -252,7 +252,7 @@ main 必须校验 IPC input 并返回可序列化 DTO。不要暴露 `ipcRendere
 Electron main 没有 React Scope、render phase 或 DOM lifecycle。应在 main application composition root 创建 Runtime，并为显式 owner 创建 plain Binding：
 
 ```ts
-import { ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { ViewModel, ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 class WindowCoordinator extends ViewModel {
   public async restoreWindows(): Promise<void> {
@@ -355,7 +355,7 @@ app.on('before-quit', () => {
 
 ## 检查清单
 
-- main 使用 `view_model/core`，renderer 使用 `view_model/electron`。
+- main 使用 `@lwjlol/view_model/core`，renderer 使用 `@lwjlol/view_model/electron`。
 - 一个 Runtime object 只存在于一个 JavaScript process 与明确的 ownership boundary 内。
 - 将 `ViewModelScope` 视为 React Binding adapter，而不是 DI 容器。
 - 使用稳定 Spec、显式 key 与一个 Runtime 共享应用模块。
@@ -363,6 +363,6 @@ app.on('before-quit', () => {
 - 在 `onCreate` 注册 IPC listener，并通过 `addDispose` 移除。
 - 任何 Scope lifecycle token 都会 pause 它的整个 Runtime。
 - main/preload/renderer 之间只传递经过校验、可序列化的数据。
-- 永远不要导入 `view_model/react` 或声称支持普通 Web。
+- 永远不要导入 `@lwjlol/view_model/react` 或声称支持普通 Web。
 
 renderer、preload 与 main-process 边界见 [examples/electron](../../examples/electron/README.md)。

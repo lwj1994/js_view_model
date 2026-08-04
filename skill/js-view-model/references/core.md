@@ -33,11 +33,11 @@ import {
   type ViewModelCacheTarget,
   type ViewModelType,
   viewModelSpec,
-} from 'view_model/core';
+} from '@lwjlol/view_model/core';
 ```
 
-`view_model` is an alias of the core entry. React Native and Electron platform
-entries re-export core. There is no public `view_model/react` entry.
+`@lwjlol/view_model` is an alias of the core entry. React Native and Electron platform
+entries re-export core. There is no public `@lwjlol/view_model/react` entry.
 
 ## Architecture model
 

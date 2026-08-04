@@ -11,7 +11,7 @@ React is not part of the base `ViewModel` contract. React Native and Electron re
 Extend `ViewModel` when the module needs custom fields or notification behavior.
 
 ```ts
-import { ViewModel, viewModelSpec } from 'view_model/core';
+import { ViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 class ConnectionViewModel extends ViewModel {
   #status: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
@@ -86,7 +86,7 @@ Do not treat a thrown listener error as proof that the state commit was rolled b
 `StateViewModel` is the convenient choice for immutable snapshots.
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/core';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 type ProfileState = Readonly<{
   displayName: string;

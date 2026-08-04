@@ -57,4 +57,4 @@
 
 ## 支持边界
 
-公开应用入口只有 `view_model/core`、`view_model/react-native` 与 `view_model/electron`。本库没有 `view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。
+公开应用入口只有 `@lwjlol/view_model/core`、`@lwjlol/view_model/react-native` 与 `@lwjlol/view_model/electron`。本库没有 `@lwjlol/view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。

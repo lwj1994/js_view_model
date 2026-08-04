@@ -7,6 +7,8 @@
 
 面向 **React Native** 与 **Electron** 的应用级依赖注入、功能模块组合、状态管理与自动生命周期框架。
 
+npm 包名为 [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model)。
+
 `view_model` 不只管理页面状态。功能、repository、service、coordinator、设备连接或领域能力都可以成为受管理的 ViewModel。模块通过 `viewModelBinding` 按需解析彼此，在明确的 `ViewModelRuntime` 内共享实例，并在最后一个 owner 离开后释放资源。
 
 > [!IMPORTANT]
@@ -17,7 +19,12 @@
 核心 Runtime 不依赖 React。应用可在 composition root 创建一个长期 Runtime，让启动逻辑、后台服务、Electron main、测试或任意 TypeScript host 通过 plain Binding 使用同一套 DI：
 
 ```ts
-import { StateViewModel, ViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import {
+  StateViewModel,
+  ViewModel,
+  ViewModelRuntime,
+  viewModelSpec,
+} from '@lwjlol/view_model/core';
 
 type SessionState = Readonly<{ token: string | null }>;
 
@@ -89,19 +96,19 @@ bootstrapBinding.dispose();
 
 ## 支持入口
 
-| 运行环境                            | 入口                      | 状态       |
-| ----------------------------------- | ------------------------- | ---------- |
-| 平台无关 TypeScript / Electron main | `view_model/core`         | 支持       |
-| React Native                        | `view_model/react-native` | 支持       |
-| Electron renderer                   | `view_model/electron`     | 支持       |
-| 普通 React Web / SSR                | 无                        | **不支持** |
+| 运行环境                            | 入口                              | 状态       |
+| ----------------------------------- | --------------------------------- | ---------- |
+| 平台无关 TypeScript / Electron main | `@lwjlol/view_model/core`         | 支持       |
+| React Native                        | `@lwjlol/view_model/react-native` | 支持       |
+| Electron renderer                   | `@lwjlol/view_model/electron`     | 支持       |
+| 普通 React Web / SSR                | 无                                | **不支持** |
 
-平台入口会重导出 core API。建议从 `view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `view_model/react`。
+平台入口会重导出 core API。建议从 `@lwjlol/view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `@lwjlol/view_model/react`。
 
 ## 安装
 
 ```sh
-npm install view_model@0.2.0
+npm install @lwjlol/view_model@0.2.0
 ```
 
 React Native App 必须提供兼容的 `react` 与 `react-native` peer。Electron renderer App 必须提供 React 与自己的 renderer，Electron 由宿主 App 提供。精确版本范围以当前 `package.json` 为准。
@@ -112,8 +119,12 @@ Spec 应定义在模块作用域，避免 render 期间分配，并让 builder �
 
 ```tsx
 import { Button, Text, View } from 'react-native';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/react-native';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/react-native';
 
 class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   public constructor() {
@@ -158,8 +169,12 @@ export default function App(): React.JSX.Element {
 
 ```tsx
 import { createRoot } from 'react-dom/client';
-import { StateViewModel, viewModelSpec } from 'view_model/core';
-import { ViewModelScope, useReadViewModel, useViewModelSelector } from 'view_model/electron';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/core';
+import {
+  ViewModelScope,
+  useReadViewModel,
+  useViewModelSelector,
+} from '@lwjlol/view_model/electron';
 
 class WindowCounter extends StateViewModel<number> {
   public constructor() {

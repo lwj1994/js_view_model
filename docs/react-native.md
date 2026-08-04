@@ -2,7 +2,7 @@
 
 [简体中文](./zh/react-native.md) · [Documentation index](./README.md)
 
-> `view_model/react-native` is the supported public React Native entry point. It is for React Native applications, not React DOM or general Web rendering.
+> `@lwjlol/view_model/react-native` is the supported public React Native entry point. It is for React Native applications, not React DOM or general Web rendering.
 
 The application DI graph belongs to a `ViewModelRuntime`. `ViewModelScope` is the React Native owner adapter for that graph: it creates a `ViewModelBinding`, connects platform lifecycle events to the Runtime, and provides the Runtime and Binding to hooks.
 
@@ -20,17 +20,17 @@ import {
   useViewModel,
   useViewModelSelector,
   viewModelSpec,
-} from 'view_model/react-native';
+} from '@lwjlol/view_model/react-native';
 ```
 
-There is intentionally no public `view_model/react` entry point. The shared React implementation is internal and does not promise React Web, SSR, React Server Components, or browser hydration support.
+There is intentionally no public `@lwjlol/view_model/react` entry point. The shared React implementation is internal and does not promise React Web, SSR, React Server Components, or browser hydration support.
 
 ## Choose the Runtime boundary first
 
 For a simple application with only one React root, the root Scope can create and own its Runtime:
 
 ```tsx
-import { ViewModelScope } from 'view_model/react-native';
+import { ViewModelScope } from '@lwjlol/view_model/react-native';
 
 export default function App() {
   return (
@@ -46,7 +46,7 @@ The Scope disposes its Binding on real unmount and then disposes the Runtime it 
 For application-level DI shared by React and non-React owners, create the Runtime at the composition root and inject it:
 
 ```tsx
-import { ViewModelRuntime, ViewModelScope } from 'view_model/react-native';
+import { ViewModelRuntime, ViewModelScope } from '@lwjlol/view_model/react-native';
 
 export const applicationRuntime = new ViewModelRuntime();
 
@@ -78,7 +78,7 @@ To share the session identity with the React Scope, define `sessionSpec` with an
 Prefer a module-level Spec with an explicit ViewModel type. The type supplies stable identity across independently created Specs; keeping one declaration also makes the builder and options deterministic:
 
 ```ts
-import { StateViewModel, viewModelSpec } from 'view_model/react-native';
+import { StateViewModel, viewModelSpec } from '@lwjlol/view_model/react-native';
 
 interface CounterState {
   readonly count: number;
@@ -109,7 +109,7 @@ Use `useViewModel` when the component reads broad ViewModel data and should upda
 
 ```tsx
 import { Button, Text, View } from 'react-native';
-import { useViewModel } from 'view_model/react-native';
+import { useViewModel } from '@lwjlol/view_model/react-native';
 
 function CounterPanel() {
   const counter = useViewModel(counterSpec);
@@ -131,7 +131,7 @@ Use `useReadViewModel` for command-only components:
 
 ```tsx
 import { Button } from 'react-native';
-import { useReadViewModel } from 'view_model/react-native';
+import { useReadViewModel } from '@lwjlol/view_model/react-native';
 
 function IncrementButton() {
   const counter = useReadViewModel(counterSpec);
@@ -346,7 +346,7 @@ runtime.dispose();
 
 ## Checklist
 
-- Import from `view_model/react-native`, never `view_model/react`.
+- Import from `@lwjlol/view_model/react-native`, never `@lwjlol/view_model/react`.
 - Decide whether the Runtime is Scope-owned or application-owned.
 - Use one shared Runtime plus explicit keys for application-global DI.
 - Treat Scope as one React owner Binding, not as the DI container.

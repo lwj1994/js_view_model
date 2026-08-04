@@ -6,14 +6,14 @@
 
 ## Package 入口
 
-| Import                    | 环境                                                       | 内容                                                                         |
-| ------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `view_model`              | non-React/core                                             | 与 `view_model/core` 相同的公开 core surface。                               |
-| `view_model/core`         | React Native plain owner、Electron main、test、共享 module | ViewModel class、Spec、Runtime、Binding、type 与 error。                     |
-| `view_model/react-native` | React Native                                               | 全部 core export，加上 React Native Scope、hooks 与 AppState adapter。       |
-| `view_model/electron`     | Electron renderer                                          | 全部 core export，加上 Electron renderer Scope、hooks 与 lifecycle adapter。 |
+| Import                            | 环境                                                       | 内容                                                                         |
+| --------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `@lwjlol/view_model`              | non-React/core                                             | 与 `@lwjlol/view_model/core` 相同的公开 core surface。                       |
+| `@lwjlol/view_model/core`         | React Native plain owner、Electron main、test、共享 module | ViewModel class、Spec、Runtime、Binding、type 与 error。                     |
+| `@lwjlol/view_model/react-native` | React Native                                               | 全部 core export，加上 React Native Scope、hooks 与 AppState adapter。       |
+| `@lwjlol/view_model/electron`     | Electron renderer                                          | 全部 core export，加上 Electron renderer Scope、hooks 与 lifecycle adapter。 |
 
-package 有意不导出 `view_model/react`。内部 React implementation 只由两个 platform adapter 共享，不构成通用 React Web contract。
+package 有意不导出 `@lwjlol/view_model/react`。内部 React implementation 只由两个 platform adapter 共享，不构成通用 React Web contract。
 
 ## Core 架构
 
@@ -39,7 +39,7 @@ Keyed identity、dependency propagation 与 Runtime pause 都局限在 Runtime �
 所有受管理 module 都继承 abstract `ViewModel` base class：
 
 ```ts
-import { ViewModel, viewModelSpec } from 'view_model/core';
+import { ViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 class CounterViewModel extends ViewModel {
   public count = 0;
@@ -538,7 +538,7 @@ type ViewModelEquality<Selection> = (previous: Selection, next: Selection) => bo
 
 ## React Native API
 
-`view_model/react-native` 重新导出所有 core symbol，并添加以下内容。
+`@lwjlol/view_model/react-native` 重新导出所有 core symbol，并添加以下内容。
 
 ### `ViewModelScope`
 
@@ -583,7 +583,7 @@ interface ViewModelLifecycleSource {
 
 ## Electron renderer API
 
-`view_model/electron` 重新导出所有 core symbol，并添加以下内容。
+`@lwjlol/view_model/electron` 重新导出所有 core symbol，并添加以下内容。
 
 ### `ViewModelScope`
 
@@ -694,7 +694,7 @@ listener 与 cleanup failure 也可能通过标准 JavaScript `AggregateError` �
 
 ```ts
 // Unsupported: no public Web/React entry point exists.
-import { ViewModelScope } from 'view_model/react';
+import { ViewModelScope } from '@lwjlol/view_model/react';
 ```
 
 当前 package 不承诺：

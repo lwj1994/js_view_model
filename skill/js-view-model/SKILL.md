@@ -27,10 +27,10 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
 ## Follow this workflow
 
 1. Identify the host and realm.
-   - Use `view_model/core` in plain TypeScript and Electron main.
-   - Use `view_model/react-native` for RN Scope/hooks.
-   - Use `view_model/electron` for Electron renderer Scope/hooks.
-   - Never generate a `view_model/react` import or claim Web/SSR/RSC support.
+   - Use `@lwjlol/view_model/core` in plain TypeScript and Electron main.
+   - Use `@lwjlol/view_model/react-native` for RN Scope/hooks.
+   - Use `@lwjlol/view_model/electron` for Electron renderer Scope/hooks.
+   - Never generate a `@lwjlol/view_model/react` import or claim Web/SSR/RSC support.
 
 2. Choose the Runtime boundary first.
    - Create one application Runtime when modules should participate in the

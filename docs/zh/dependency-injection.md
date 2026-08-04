@@ -36,7 +36,12 @@ ViewModel 完成 build 与 attach 后，Runtime 会给它一个私有 dependency
 当依赖容器需要独立于 UI 存在时，创建应用 Runtime 与 root Binding。
 
 ```ts
-import { ViewModel, ViewModelRuntime, viewModelSpec, type ViewModelSpec } from 'view_model/core';
+import {
+  ViewModel,
+  ViewModelRuntime,
+  viewModelSpec,
+  type ViewModelSpec,
+} from '@lwjlol/view_model/core';
 
 class SessionViewModel extends ViewModel {
   public async requireAccessToken(): Promise<string> {

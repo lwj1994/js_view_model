@@ -46,7 +46,7 @@ npm audit --audit-level=low
 
 ```ts
 import { describe, expect, it, vi } from 'vitest';
-import { StateViewModel, ViewModelRuntime, viewModelSpec } from 'view_model/core';
+import { StateViewModel, ViewModelRuntime, viewModelSpec } from '@lwjlol/view_model/core';
 
 type CounterState = Readonly<{
   count: number;
@@ -226,7 +226,7 @@ it('keeps independent builder-only fallback tokens isolated', () => {
 ## 测试生命周期 callback，而不是 constructor side effect
 
 ```ts
-import { ViewModel } from 'view_model/core';
+import { ViewModel } from '@lwjlol/view_model/core';
 
 type LifecycleEvent =
   'create' | `bind:${string}` | `unbind:${string}` | 'pause' | 'resume' | 'dispose' | 'cleanup';
@@ -328,7 +328,7 @@ it('resumes only after the final pause token is removed', () => {
 ## 测试依赖传播
 
 ```ts
-import { ViewModel, type ViewModelSpec } from 'view_model/core';
+import { ViewModel, type ViewModelSpec } from '@lwjlol/view_model/core';
 
 class ChildViewModel extends ViewModel {
   public change(): void {
@@ -428,7 +428,7 @@ import {
   useViewModelSelector,
   viewModelSpec,
   type ElectronLifecycleSource,
-} from 'view_model/electron';
+} from '@lwjlol/view_model/electron';
 
 class FakeLifecycle implements ElectronLifecycleSource {
   public active = true;

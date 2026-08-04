@@ -22,6 +22,7 @@ Significant changes to this project are recorded here.
 
 ### Changed
 
+- Published the npm package under the public scoped name `@lwjlol/view_model`.
 - Root Binding owner sources now propagate through resolved parent-child graphs
   and mirror later bind/unbind changes in real time.
 - A complete synchronous notification cascade now shares one transaction,

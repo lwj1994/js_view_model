@@ -59,7 +59,7 @@ The builder result must be an instance of the explicit type or one of its subcla
 Declare Specs once at module scope so their builder and options remain stable:
 
 ```ts
-import { ViewModel, viewModelSpec } from 'view_model/core';
+import { ViewModel, viewModelSpec } from '@lwjlol/view_model/core';
 
 class CartViewModel extends ViewModel {
   // ...
@@ -282,4 +282,4 @@ Recycle ignores current owners and `aliveForever`. It is appropriate for deliber
 - Resolve child modules through parent getters after attach.
 - Never use dependency getters during React render or selection.
 - Use `aliveForever` and recycle only when their Runtime-wide effects are intentional.
-- Do not import or document a `view_model/react` package entry point; it is intentionally not public.
+- Do not import or document a `@lwjlol/view_model/react` package entry point; it is intentionally not public.
