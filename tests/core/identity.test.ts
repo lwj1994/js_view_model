@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import {
   ViewModel,
   ViewModelRuntime,
   ViewModelSpecError,
   viewModelSpec,
+  type ViewModelSpec,
 } from '../../src/core/index.js';
 
 const flushDisposals = async (): Promise<void> => {
@@ -89,10 +90,20 @@ describe('ViewModel 身份与引用生命周期', () => {
 
     const runtime = new ViewModelRuntime();
     const binding = runtime.createBinding();
-    const spec = viewModelSpec(DeclaredViewModel, () => new WrongViewModel());
+    const spec = viewModelSpec(DeclaredViewModel, () => new WrongViewModel(), {
+      key: 'declared-identity',
+    });
 
     expect(() => binding.read(spec)).toThrow(ViewModelSpecError);
+    expect(
+      binding.maybeReadCached(DeclaredViewModel, { key: 'declared-identity' }),
+    ).toBeUndefined();
     expect(runtime.recycle(spec)).toBe(0);
+
+    const correctSpec = viewModelSpec(DeclaredViewModel, () => new DeclaredViewModel(), {
+      key: 'declared-identity',
+    });
+    expect(binding.read(correctSpec)).toBeInstanceOf(DeclaredViewModel);
 
     runtime.dispose();
   });
@@ -112,9 +123,14 @@ describe('ViewModel 身份与引用生命周期', () => {
 
     const runtime = new ViewModelRuntime();
     const binding = runtime.createBinding();
-    const spec = viewModelSpec(AbstractViewModel, () => new ConcreteViewModel());
+    const spec = viewModelSpec(AbstractViewModel, () => new ConcreteViewModel(), {
+      key: 'abstract-identity',
+    });
+    expectTypeOf(spec).toEqualTypeOf<ViewModelSpec<AbstractViewModel>>();
 
-    expect(binding.read(spec)).toBeInstanceOf(ConcreteViewModel);
+    const viewModel = binding.read(spec);
+    expect(viewModel).toBeInstanceOf(ConcreteViewModel);
+    expect(binding.readCached(AbstractViewModel, { key: 'abstract-identity' })).toBe(viewModel);
 
     runtime.dispose();
   });

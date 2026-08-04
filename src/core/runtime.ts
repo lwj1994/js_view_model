@@ -70,6 +70,19 @@ function sameValueZero(left: ViewModelKey | undefined, right: ViewModelKey | und
   return Object.is(left, right) || (left === 0 && right === 0);
 }
 
+function isExplicitTypeInstance<T extends ViewModel>(
+  type: ViewModelType<T>,
+  value: ViewModel,
+): value is T {
+  if (typeof type !== 'function') return false;
+  const prototype: unknown = type.prototype;
+  return (
+    typeof prototype === 'object' &&
+    prototype !== null &&
+    Object.prototype.isPrototypeOf.call(prototype, value)
+  );
+}
+
 /**
  * A runtime is the outermost boundary for keyed instance sharing, the
  * dependency graph, and platform pause state.
@@ -249,10 +262,7 @@ export class ViewModelRuntime {
     if (!isViewModel(viewModel)) {
       throw new ViewModelSpecError(`${spec.debugLabel} 的 builder 必须返回 ViewModel 实例。`);
     }
-    if (
-      spec.type !== undefined &&
-      !Object.prototype.isPrototypeOf.call(spec.type.prototype, viewModel)
-    ) {
+    if (spec.type !== undefined && !isExplicitTypeInstance(spec.type, viewModel)) {
       throw new ViewModelSpecError(
         `${spec.debugLabel} 的 builder 必须返回显式 type 本身或其子类实例。`,
       );
