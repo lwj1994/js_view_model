@@ -6,6 +6,7 @@ import type {
   ViewModelDispose,
   ViewModelListener,
 } from './types.js';
+import { runInViewModelUpdateTransaction } from './update-transaction.js';
 
 const VIEW_MODEL_BRAND = Symbol.for('view_model.ViewModel.v1');
 
@@ -102,26 +103,30 @@ export abstract class ViewModel {
 
   protected notifyListeners(action?: unknown): void {
     this.#assertAlive();
-    this.#version += 1;
-    const change: ViewModelChange = {
-      action: action ?? this.#action,
-      version: this.#version,
-    };
+    runInViewModelUpdateTransaction(() => {
+      this.#version += 1;
+      const change: ViewModelChange = {
+        action: action ?? this.#action,
+        version: this.#version,
+      };
 
-    const errors: unknown[] = [];
-    for (const listener of [...this.#listeners]) {
+      const errors: unknown[] = [];
+      for (const listener of [...this.#listeners]) {
+        try {
+          listener();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
       try {
-        listener();
+        this.#runtimeListener?.(change);
       } catch (error) {
         errors.push(error);
       }
-    }
-    try {
-      this.#runtimeListener?.(change);
-    } catch (error) {
-      errors.push(error);
-    }
-    if (errors.length > 0) throw new AggregateError(errors, 'ViewModel 通知监听器时发生错误。');
+      if (errors.length > 0) {
+        throw new AggregateError(errors, 'ViewModel 通知监听器时发生错误。');
+      }
+    });
   }
 
   /** Attach a debug action to one synchronous mutation; nested calls restore the outer action. */

@@ -2,7 +2,7 @@
 
 [简体中文](./zh/electron.md) · [Documentation index](./README.md)
 
-> `view_model/electron` is the public Electron renderer entry point in v0.1 alpha. It does not imply support for ordinary React Web applications.
+> `view_model/electron` is the supported public Electron renderer entry point. It does not imply support for ordinary React Web applications.
 
 Electron has several JavaScript environments with hard process and security
 boundaries. Every environment that uses `view_model` owns its own

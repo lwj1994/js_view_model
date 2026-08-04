@@ -30,4 +30,25 @@ assert.ok(
 );
 cjsRuntime.dispose();
 
+class CrossConditionViewModel extends esmCore.ViewModel {}
+const esmTypedSpec = esmCore.viewModelSpec(
+  CrossConditionViewModel,
+  () => new CrossConditionViewModel(),
+  { key: 'cross-condition-type' },
+);
+const cjsTypedSpec = cjsCore.viewModelSpec(
+  CrossConditionViewModel,
+  () => new CrossConditionViewModel(),
+  { key: 'cross-condition-type' },
+);
+const crossConditionRuntime = new esmCore.ViewModelRuntime();
+const firstTypedBinding = crossConditionRuntime.createBinding();
+const secondTypedBinding = crossConditionRuntime.createBinding();
+assert.equal(
+  firstTypedBinding.read(esmTypedSpec),
+  secondTypedBinding.read(cjsTypedSpec),
+  'ESM/CJS Specs 必须按相同显式 type + key 共享 generation',
+);
+crossConditionRuntime.dispose();
+
 console.log('package exports: ok');

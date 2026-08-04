@@ -2,7 +2,7 @@
 
 [简体中文](./zh/concepts.md) · [Documentation index](./README.md)
 
-> This guide describes the current v0.1 alpha behavior. `view_model` is designed for React Native and Electron applications. It does not publish a general React Web entry point.
+> This guide describes the supported `view_model` behavior for React Native and Electron applications. The package does not publish a general React Web entry point.
 
 `view_model` combines application-level dependency injection, state propagation, and automatic lifetime management. The application object graph lives in a `ViewModelRuntime`. A React `ViewModelScope` is only an owner adapter: it connects one React subtree to a Runtime through a `ViewModelBinding`; it is not the DI container itself.
 
@@ -23,7 +23,7 @@ Application composition root
 
 The Runtime is the maximum boundary for all of the following:
 
-- keyed instance sharing;
+- explicit type + key instance sharing;
 - the managed dependency graph;
 - generation numbers;
 - force recycling;
@@ -39,7 +39,7 @@ Two Runtime objects never share managed instances, even when they resolve the sa
 | `ViewModelRuntime` | Owns managed instances, keyed caches, dependency edges, pause state, recycling, and final cleanup.                            |
 | `ViewModelScope`   | Adapts a React subtree to a Runtime. It creates one stable Binding and supplies it to hooks.                                  |
 | `ViewModelBinding` | Represents one owner. `read` and `watch` acquire instances; `dispose` releases everything acquired by that Binding.           |
-| `ViewModelSpec<T>` | Declares a pure builder and the identity policy for one ViewModel family.                                                     |
+| `ViewModelSpec<T>` | Declares an explicit ViewModel type, a pure builder, and identity/lifetime options.                                           |
 | generation         | One concrete managed object created for a Spec identity. Recycling ends a generation; a later resolution creates another one. |
 
 A root Scope without an injected Runtime creates and eventually disposes its own Runtime. A nested Scope reuses the parent Runtime by default but always creates a different Binding. An explicitly injected Runtime is owned by the caller, not by the Scope.
@@ -47,14 +47,16 @@ A root Scope without an injected Runtime creates and eventually disposes its own
 This distinction matters for application-level DI. A long-lived application
 Binding can own an unkeyed graph for its own lifetime. Sharing one service
 across separate plain/Scope/parent Bindings additionally requires the same
-Runtime and an explicit key on the stable Spec. React nesting by itself does not
-make a ViewModel global.
+Runtime, the same explicit ViewModel type, and an explicit key. React nesting by
+itself does not make a ViewModel global.
 
-## Stable Specs are identity tokens
+## Explicit types define identity; stable Specs define construction
 
-A Spec is not merely a factory wrapper. Every `ViewModelSpec` owns a unique runtime `token`, and identity is based on that token.
+Use the ViewModel class as an explicit runtime identity value. The recommended declaration form is `viewModelSpec(MyViewModel, () => new MyViewModel(), options)`:
 
-Declare Specs once at module scope:
+The builder result must be an instance of the explicit type or one of its subclasses. Abstract base classes with protected constructors can be used as identity values.
+
+Declare Specs once at module scope so their builder and options remain stable:
 
 ```ts
 import { ViewModel, viewModelSpec } from 'view_model/core';
@@ -63,7 +65,7 @@ class CartViewModel extends ViewModel {
   // ...
 }
 
-export const cartSpec = viewModelSpec(() => new CartViewModel(), {
+export const cartSpec = viewModelSpec(CartViewModel, () => new CartViewModel(), {
   debugLabel: 'CartViewModel',
 });
 ```
@@ -72,22 +74,25 @@ Do not create a Spec during React render:
 
 ```tsx
 function CartScreen() {
-  // Wrong: every render creates a new token and therefore a new identity.
-  const cart = useViewModel(viewModelSpec(() => new CartViewModel()));
+  // Wrong: this allocates a new Spec and builder during every render.
+  const cart = useViewModel(viewModelSpec(CartViewModel, () => new CartViewModel()));
   return <CartView cart={cart} />;
 }
 ```
 
-The resolved TypeScript generic type is erased at runtime. Consequently, two independently constructed Specs do not share an instance merely because they use the same ViewModel class, builder, `debugLabel`, and key.
+The explicit class argument survives TypeScript generic erasure. Within one Runtime, independently constructed explicit Specs with the same ViewModel type and key share the same generation. The first builder to win a cache miss constructs it, so repeated declarations with divergent builders or options are unsafe even when their identity matches.
 
 Identity rules are exact:
 
 ```text
-unkeyed identity = one Spec token inside one Binding
-keyed identity   = one Spec token + key inside one Runtime
+explicit identity = ViewModel type + effective key inside one Runtime
+unkeyed            = effective key is private to one Binding
+keyed              = effective key is the explicit key
 ```
 
-`debugLabel` is diagnostic metadata and never participates in identity. `withKey(key)` creates another Spec that preserves the original token, which is useful when the same Spec family needs a keyed variant.
+The builder-only form `viewModelSpec(() => new MyViewModel(), options)` remains as a compatibility fallback. Every builder-only Spec gets an independent token, so separate builder-only Specs do not share even if their builders return the same class and their keys match.
+
+`debugLabel` is diagnostic metadata and never participates in identity. `withKey(key)` preserves an explicit Spec's ViewModel type identity; on a builder-only Spec it preserves that Spec's fallback token.
 
 ## Unkeyed, keyed, and aliveForever
 
@@ -95,7 +100,7 @@ keyed identity   = one Spec token + key inside one Runtime
 
 An unkeyed Spec is private to the Binding that first resolves it:
 
-- repeated resolution of the same stable Spec in one Binding returns the same generation;
+- repeated resolution of the same explicit ViewModel type in one Binding returns the same generation, including through separate explicit Specs;
 - two Scope Bindings resolve isolated generations;
 - a parent ViewModel's dependency Binding owns its own unkeyed generation;
 - an unkeyed generation is normally disposed after its final owning Binding releases it.
@@ -107,7 +112,7 @@ This is the default for screen-local state and modules intended to be private to
 An explicit key makes the instance shareable across Bindings in the same Runtime:
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'SessionViewModel',
 });
@@ -122,7 +127,7 @@ Use a key when the application intentionally needs one identity across UI Scopes
 `aliveForever` prevents ordinary zero-owner cleanup, but it does not make an instance independent of its Runtime:
 
 ```ts
-export const telemetrySpec = viewModelSpec(() => new TelemetryViewModel(), {
+export const telemetrySpec = viewModelSpec(TelemetryViewModel, () => new TelemetryViewModel(), {
   key: 'application-telemetry',
   aliveForever: true,
   debugLabel: 'TelemetryViewModel',
@@ -194,7 +199,7 @@ This design gives one stable owner boundary to a React subtree and prevents tran
 Any feature, repository, coordinator, state holder, or platform capability may be modeled as a ViewModel. Parent modules resolve child modules through their generation-owned `viewModelBinding`:
 
 ```ts
-const authSpec = viewModelSpec(() => new AuthViewModel(), {
+const authSpec = viewModelSpec(AuthViewModel, () => new AuthViewModel(), {
   key: 'application-auth',
 });
 
@@ -223,6 +228,8 @@ The getter declaration is lazy and creates nothing by itself. Once evaluated aft
 
 An unkeyed child is private to that parent generation's dependency Binding. A keyed child may also be owned by other parents, a Scope, or a plain Binding and can therefore outlive one parent.
 
+Root ownership is source-aware. Every root Binding source currently owning the parent is propagated to children that parent has resolved, and later root bind/unbind changes are mirrored to those children in real time.
+
 Use `read` for imperative child calls. Use `watch` only when child notifications must bubble through `onDependencyNotify(child)` and then notify the parent. Synchronous propagation is transactionally deduplicated.
 
 ## Dependency access is commit-only
@@ -244,7 +251,7 @@ React render may be replayed or abandoned. UI code should select state already e
 
 ## The dependency graph must be acyclic
 
-The Runtime rejects direct and indirect owner cycles. Unkeyed recursion is also detected through the active ancestor token lineage.
+The Runtime rejects direct and indirect owner cycles. Unkeyed recursion is also detected through the active ancestor identity lineage.
 
 When two modules appear to require each other, prefer one of these designs:
 
@@ -260,7 +267,7 @@ A generation is immutable as an object identity. There is no in-place replacemen
 
 Avoid retaining ViewModel references in long-lived external fields across an operation that may recycle them. Resolve through the current Binding and stable Spec when a fresh generation may be required.
 
-`runtime.recycle(viewModel)` targets one concrete generation. `runtime.recycle(spec)` targets every matching identity in that Runtime. For an unkeyed Spec, that can mean one generation per Binding because all of them share the same token but have private Binding-local entries.
+`runtime.recycle(viewModel)` targets one concrete generation. `runtime.recycle(spec)` targets every matching identity in that Runtime. For an unkeyed Spec, that can mean one generation per Binding because the effective key is Binding-private.
 
 Recycle ignores current owners and `aliveForever`. It is appropriate for deliberate application-wide invalidation such as logout or disconnect. For an independent replacement, a new business key is safer than force-recycling a shared generation.
 
@@ -268,7 +275,7 @@ Recycle ignores current owners and `aliveForever`. It is appropriate for deliber
 
 - Put the application DI graph in a deliberately owned Runtime.
 - Treat Scope as a React Binding adapter, not as the service container.
-- Declare Specs once and preserve their tokens.
+- Prefer explicit-type Specs and declare them once so their builders and options remain stable.
 - Default to unkeyed owner-local modules; use explicit keys for intended Runtime-wide sharing.
 - Use `watch` for reactive ownership and `read` for imperative ownership.
 - Keep builders and constructors pure; start resources in `onCreate` and register cleanup with `addDispose`.

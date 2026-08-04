@@ -10,7 +10,7 @@
 - read hook 只用于取得 action；
 - React Native `AppState` 自动驱动 Runtime pause/resume。
 
-> 本示例需要 v0.1 Alpha 的 `view_model` API。它只适用于 React Native 应用，
+> 本示例需要当前正式版 `view_model` API。它只适用于 React Native 应用，
 > 不适用于 React Web。
 
 以下 `App.tsx` 文件名仅用于标记示意代码片段。此目录不包含完整可运行的 React Native

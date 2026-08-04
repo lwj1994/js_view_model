@@ -2,7 +2,7 @@
 
 [English](../react-native.md) · [文档索引](./README.md)
 
-> `view_model/react-native` 是 v0.1 alpha 的公开 React Native 入口。它面向 React Native 应用，不适用于 React DOM 或通用 Web rendering。
+> `view_model/react-native` 是正式支持的公开 React Native 入口。它面向 React Native 应用，不适用于 React DOM 或通用 Web rendering。
 
 应用 DI 图属于 `ViewModelRuntime`。`ViewModelScope` 是该对象图的 React Native owner adapter：它创建 `ViewModelBinding`、将 platform lifecycle event 连接到 Runtime，并向 hooks 提供 Runtime 与 Binding。
 
@@ -71,11 +71,11 @@ await session.restore();
 bootstrap.dispose();
 ```
 
-若要与 React Scope 共享 `sessionSpec`，它必须有显式 key。即使 Binding 使用同一个 Runtime，unkeyed Spec 仍对各 Binding 私有。
+若要与 React Scope 共享 session identity，应使用显式 ViewModel type 与 key 定义 `sessionSpec`。即使 Binding 使用同一个 Runtime，unkeyed identity 仍对各 Binding 私有。
 
 ## 定义稳定模块
 
-Spec token 参与 runtime identity，因此 Spec 必须是模块顶层的稳定对象：
+优先在模块顶层用显式 ViewModel type 声明 Spec。type 会为独立创建的 Spec 提供稳定 identity；复用同一声明也能让 builder 与 options 保持确定：
 
 ```ts
 import { StateViewModel, viewModelSpec } from 'view_model/react-native';
@@ -94,12 +94,12 @@ class CounterViewModel extends StateViewModel<CounterState> {
   };
 }
 
-export const counterSpec = viewModelSpec(() => new CounterViewModel(), {
+export const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
   debugLabel: 'CounterViewModel',
 });
 ```
 
-不要在 component 或 hook 内创建 `counterSpec`。新的 Spec 会创建新 token，因此也会形成新 identity。
+不要在 component 或 hook 内创建 `counterSpec`。使用 explicit-type overload 时，重复 wrapper 仍可能解析到同一个 type identity，但这会在 render 中反复分配对象，并可能引入冲突的 builder 或 options。builder-only overload 会给每个 Spec 分配私有 token，仅作为兼容 fallback 保留；分别创建的 builder-only Spec 不会共享。
 
 ## 在 Scope 内使用 hooks
 
@@ -182,7 +182,7 @@ selector 会作为 React snapshot/render 工作的一部分执行，因此必须
 - 默认复用 parent Runtime；
 - 创建不同 Binding；
 - 将 unkeyed Spec 与 parent Scope 隔离；
-- 可以通过共同 Runtime 共享 keyed Spec。
+- 可以通过共同 Runtime 共享显式 type + key identity，即使 Spec 是分别创建的。
 
 单个 hook cleanup 只会移除该 hook 的 listener，不会释放 Binding 已 acquire 的 entry。generation 会一直由 owner 持有到 Scope dispose 或 generation 被强制 recycle。
 
@@ -283,13 +283,13 @@ React Navigation 通常会让 blurred screen 保持 mounted。除非业务模型
 需要由多个 Scope 或 plain Binding owner 共享的 module 应使用显式 key：
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'SessionViewModel',
 });
 ```
 
-该 module 只在提供给这些 owner 的 `applicationRuntime` 内是应用全局的。另一个 Runtime 会使用相同 Spec 与 key 解析出另一个 generation。
+该 module 只在提供给这些 owner 的 `applicationRuntime` 内是应用全局的。另一个 Runtime 会使用相同显式 type 与 key 解析出另一个 generation；在同一个 Runtime 内，采用该 type 与 key 的独立 Spec 会解析到这一 generation。
 
 `aliveForever` 是可选项，并且只要 application owner Binding 仍存在，通常没有必要使用。若使用，它必须有显式 key，并且仍会在 recycle 或 Runtime dispose 时结束。
 

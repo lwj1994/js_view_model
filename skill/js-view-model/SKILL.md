@@ -1,6 +1,6 @@
 ---
 name: js-view-model
-description: Build, refactor, review, debug, or test TypeScript application modules with the view_model package for React Native and Electron. Use for application-wide dependency injection, ViewModel and StateViewModel design, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, read/watch/selector choices, parent-child module composition, automatic lifecycle, StrictMode, pause/resume, aliveForever, recycle, or platform integration.
+description: Build, refactor, review, debug, or test TypeScript application modules with the view_model package for React Native and Electron. Use for application-wide dependency injection, ViewModel and StateViewModel design, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, read/watch/selector and advanced cached/tag choices, Binding-owned listeners, parent-child module composition, automatic lifecycle, StrictMode, pause/resume, aliveForever, recycle, or platform integration.
 ---
 
 # JS ViewModel
@@ -50,11 +50,20 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
      lazy composition, sharing, or notifications are useful.
 
 4. Declare stable Specs at module scope.
-   - Use `viewModelSpec(() => new X(), options)`.
-   - Remember that identity is `(Spec token, key)`, not class plus key.
-   - Use `baseSpec.withKey(key)` for variants that must preserve the base token.
+   - Prefer `viewModelSpec(X, () => new X(), options)` so the class is an
+     explicit runtime identity.
+   - Inside one Runtime, explicit identity is ViewModel type plus effective
+     key. An omitted key is private to one Binding; an explicit key shares
+     across Bindings.
+   - Independent explicit Specs with the same type and key share. Keep one
+     module-level declaration anyway so builder and options cannot diverge.
+   - Treat `viewModelSpec(() => new X(), options)` as a compatibility fallback:
+     every builder-only Spec receives an independent token.
+   - Use `baseSpec.withKey(key)` for variants that preserve the base explicit
+     type identity or builder-only fallback token.
    - Keep ordinary modules unkeyed unless cross-Binding sharing or multiple
      variants are required.
+   - Treat `tag` as lookup metadata, never as part of identity.
    - Give every `aliveForever` Spec an explicit key.
 
 5. Select an owner adapter.
@@ -71,8 +80,15 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
      update propagation.
    - Use `binding.watch(spec)` when a plain owner or parent should react to
      ordinary ViewModel notifications.
-   - Resolve child modules through non-caching
-     `this.viewModelBinding.read/watch(spec)` getters.
+   - Resolve normal child modules through
+     `this.viewModelBinding.read/watch(spec)` getters. Preserve the Spec instead
+     of querying a cache by type.
+   - Use `readCached`, `watchCached`, their `maybe` variants, and tag-batch
+     queries only for advanced lookup of generations another path already
+     created. They do not construct missing instances.
+   - Use Binding-owned `listen`, `listenState`, or `listenStateSelect` for
+     side-effect subscriptions that must clean up with Binding or generation
+     disposal. Keep the returned disposer when earlier cleanup is useful.
    - Call dependency getters only from actions, `onCreate`, lifecycle hooks,
      or internal collaboration after attach/commit.
    - In React, choose `useViewModel`, `useReadViewModel`, or
@@ -89,7 +105,10 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
 
 8. Validate semantics, not only types.
    - Test identity, ownership release, dependency propagation, pause tokens,
-     recycle, and resource cleanup where they affect the feature.
+     recycle, cached lookup misses, listener cleanup, and resource cleanup where
+     they affect the feature.
+   - Verify a complete synchronous notification cascade deduplicates the same
+     callback per Binding while different Bindings still receive updates.
    - Flush disposal microtasks before asserting automatic destruction.
    - Run the repository's serial test and package checks.
 
@@ -99,8 +118,15 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
   mean unowned; it only ignores ordinary ViewModel notifications.
 - An unkeyed instance is private to the resolving Binding. A parent generation
   owns a private dependency Binding for its unkeyed children.
-- Two independently created Specs do not share, even when their builders,
-  classes, and keys look identical.
+- Independently created explicit Specs share when their ViewModel type and key
+  match. Independently created builder-only Specs retain separate fallback
+  tokens and do not share.
+- Root Binding owner sources are mirrored through resolved child graphs. Later
+  root bind/unbind changes propagate in real time, with source-aware reference
+  counting across direct and multiple-parent paths.
+- One entire synchronous notification cascade shares a transaction. The same
+  callback is deduplicated per Binding; asynchronous notifications start a new
+  transaction.
 - `update(action, mutation)` only supplies an action context. It does not call
   `notifyListeners`; ordinary `ViewModel` mutations must notify explicitly.
 - `StateViewModel` compares state with `Object.is` by default. Replace immutable
@@ -109,6 +135,9 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
   notifies the parent. Do not unconditionally notify a second time in that hook.
 - A single React hook cleanup removes its listener but does not release the
   Scope Binding's owner entry. Scope disposal or recycle ends that ownership.
+- Binding-owned `listen*` subscriptions differ from hook listeners: Binding
+  disposal, generation disposal/recycle, or their returned disposer removes
+  them automatically.
 - Pause/resume is Runtime-wide and token-aggregated. A nested Scope sharing a
   Runtime cannot pause only its own instances.
 - `runtime.recycle(instance)` force-disposes one generation.
@@ -119,8 +148,8 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
 
 ## Avoid invented or Flutter-only APIs
 
-Do not generate `tag`, cached lookup, `ViewModelSpec.argN`, spec proxy,
-code-generation annotations, `ChangeNotifierViewModel`, global
+Do not generate `ViewModelSpec.argN`, spec proxy, code-generation annotations,
+`ChangeNotifierViewModel`, global
 `ViewModel.initialize/reset/config`, DevTools integration, route/ticker pause
 providers, or widget mixins. They belong to other implementations and are not
 part of this TypeScript package.

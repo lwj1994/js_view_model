@@ -9,7 +9,7 @@
 - preload 暴露窄而明确的 IPC bridge；
 - 进程之间只交换可序列化 DTO，不传递 ViewModel 对象。
 
-> 本示例需要 v0.1 Alpha 的 `view_model` API。支持 Electron renderer 不代表支持
+> 本示例需要当前正式版 `view_model` API。支持 Electron renderer 不代表支持
 > React Web。
 
 以下文件名仅用于标记示意代码片段。此目录不包含完整可运行的 Electron 项目、包配置或

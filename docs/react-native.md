@@ -2,7 +2,7 @@
 
 [简体中文](./zh/react-native.md) · [Documentation index](./README.md)
 
-> `view_model/react-native` is the public React Native entry point in v0.1 alpha. It is for React Native applications, not React DOM or general Web rendering.
+> `view_model/react-native` is the supported public React Native entry point. It is for React Native applications, not React DOM or general Web rendering.
 
 The application DI graph belongs to a `ViewModelRuntime`. `ViewModelScope` is the React Native owner adapter for that graph: it creates a `ViewModelBinding`, connects platform lifecycle events to the Runtime, and provides the Runtime and Binding to hooks.
 
@@ -71,11 +71,11 @@ await session.restore();
 bootstrap.dispose();
 ```
 
-To share `sessionSpec` with the React Scope, it must have an explicit key. An unkeyed Spec remains private to each Binding even when the Bindings use the same Runtime.
+To share the session identity with the React Scope, define `sessionSpec` with an explicit ViewModel type and key. An unkeyed identity remains private to each Binding even when the Bindings use the same Runtime.
 
 ## Define a stable module
 
-Specs must be module-level stable objects because their token participates in runtime identity:
+Prefer a module-level Spec with an explicit ViewModel type. The type supplies stable identity across independently created Specs; keeping one declaration also makes the builder and options deterministic:
 
 ```ts
 import { StateViewModel, viewModelSpec } from 'view_model/react-native';
@@ -94,12 +94,12 @@ class CounterViewModel extends StateViewModel<CounterState> {
   };
 }
 
-export const counterSpec = viewModelSpec(() => new CounterViewModel(), {
+export const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
   debugLabel: 'CounterViewModel',
 });
 ```
 
-Do not create `counterSpec` inside a component or hook. A new Spec creates a new token and therefore a new identity.
+Do not create `counterSpec` inside a component or hook. With the explicit-type overload, repeated wrappers can still resolve the same type identity, but they allocate during render and may introduce conflicting builders or options. The builder-only overload assigns a private token to each Spec and remains only as a compatibility fallback; separately created builder-only Specs do not share.
 
 ## Use hooks inside a Scope
 
@@ -182,7 +182,7 @@ Every Scope creates one stable Binding. A nested Scope:
 - reuses the parent Runtime by default;
 - creates a different Binding;
 - isolates unkeyed Specs from the parent Scope;
-- can share keyed Specs through the common Runtime.
+- can share explicit type + key identities through the common Runtime, even across independent Specs.
 
 An individual hook cleanup removes that hook's listener but does not release the Binding's acquired entry. The generation remains owned until the Scope is disposed or it is force-recycled.
 
@@ -283,13 +283,13 @@ Returning to a blurred-but-mounted screen normally resumes the same generation. 
 Use an explicit key for a module that must be shared by multiple Scope or plain Binding owners:
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'SessionViewModel',
 });
 ```
 
-The module is application-global only within the `applicationRuntime` supplied to those owners. Another Runtime resolves another generation with the same Spec and key.
+The module is application-global only within the `applicationRuntime` supplied to those owners. Another Runtime resolves another generation with the same explicit type and key. Within one Runtime, independently created Specs using that type and key resolve this same generation.
 
 `aliveForever` is optional and normally unnecessary while an application owner Binding remains. If used, it requires an explicit key and still ends on recycle or Runtime disposal.
 

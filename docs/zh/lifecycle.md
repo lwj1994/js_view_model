@@ -2,7 +2,7 @@
 
 [English](../lifecycle.md) · [文档索引](./README.md)
 
-> 本指南描述当前 v0.1 alpha 在 React Native 与 Electron 应用中的行为。
+> 本指南描述 React Native 与 Electron 应用中正式支持的生命周期行为。
 
 生命周期在两个相互关联的层级管理：
 
@@ -237,7 +237,7 @@ Electron main 没有 React lifecycle adapter。若需要相同行为，其 owner
 
 ## 强制 recycle
 
-`runtime.recycle(viewModel)` 会结束一个具体 generation。`runtime.recycle(spec)` 会结束该 Runtime 中所有具有相同 Spec token 与 key 的当前 handle。因此，一个 unkeyed Spec 可能会 recycle 每个 Binding 各自的私有 generation。
+`runtime.recycle(viewModel)` 会结束一个具体 generation。`runtime.recycle(spec)` 会结束该 Runtime 中所有具有相同 Spec resolved identity 与 key 的当前 handle。显式 type Spec 共享 type identity，builder-only Spec 则使用兼容 token；因此，一个 unkeyed Spec 可能会 recycle 每个 Binding 各自的私有 generation。
 
 Recycle 会：
 

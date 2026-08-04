@@ -2,7 +2,7 @@
 
 [English](../electron.md) · [文档索引](./README.md)
 
-> `view_model/electron` 是 v0.1 alpha 的公开 Electron renderer 入口，不表示本库支持普通 React Web 应用。
+> `view_model/electron` 是正式支持的公开 Electron renderer 入口，不表示本库支持普通 React Web 应用。
 
 Electron 包含多个具有严格进程与安全边界的 JavaScript 环境。每个使用 `view_model` 的环境都持有自己的 `ViewModelRuntime`；应用模块通过显式、可序列化的 IPC contract 在环境间通信，而不是共享 ViewModel 对象。
 

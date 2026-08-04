@@ -13,10 +13,21 @@ export interface ViewModelChange<TAction = unknown> {
 /** A builder only constructs a pure object; resolve dependencies through getters after attach. */
 export type ViewModelBuilder<T extends ViewModel> = () => T;
 
+/** A ViewModel class object used as stable identity, including abstract/protected-base classes. */
+export interface ViewModelType<T extends ViewModel> extends Function {
+  readonly prototype: T;
+}
+
 export interface ViewModelSpecOptions {
   readonly key?: ViewModelKey;
+  readonly tag?: unknown;
   readonly aliveForever?: boolean;
   readonly debugLabel?: string;
+}
+
+export interface ViewModelCacheLookup {
+  readonly key?: ViewModelKey;
+  readonly tag?: unknown;
 }
 
 export interface ViewModelBindingOptions {

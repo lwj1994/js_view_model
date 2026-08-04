@@ -40,7 +40,7 @@ and domain capabilities can use the same runtime without React.
 | [Core concepts](./concepts.md)                      | Why do Runtime, Binding, and Scope exist, and where are their boundaries?                |
 | [ViewModels](./view-models.md)                      | How do notifications, immutable state, equality, actions, and resource hooks work?       |
 | [Dependency injection](./dependency-injection.md)   | How do services, repositories, features, and coordinators compose through getter DI?     |
-| [Identity and lifetime](./identity-and-lifetime.md) | What do Spec token, key, owner, generation, `aliveForever`, and `recycle` mean?          |
+| [Identity and lifetime](./identity-and-lifetime.md) | What do explicit type, key, owner, generation, `aliveForever`, and `recycle` mean?       |
 | [Lifecycle](./lifecycle.md)                         | What happens across React render/commit, StrictMode, pause/resume, and disposal?         |
 | [React Native](./react-native.md)                   | How do Scope, hooks, AppState, navigation focus, and custom lifecycle sources interact?  |
 | [Electron](./electron.md)                           | How should renderer, preload, main, windows, lifecycle, and IPC boundaries be designed?  |
@@ -54,8 +54,8 @@ and domain capabilities can use the same runtime without React.
   entire operating-system process.
 - `ViewModelScope` adapts React ownership to a Runtime; it is not required by
   plain TypeScript hosts.
-- A Runtime identity is `(stable Spec token, key)`. A key alone is not an
-  identity.
+- Recommended Runtime identity is `(explicit ViewModel type, effective key)`.
+  Builder-only Specs retain a private token as a compatibility fallback.
 - Both `read` and `watch` establish ownership. Only `watch` propagates ordinary
   ViewModel notifications.
 - Builders and constructors are pure. Resource work starts after acquire.

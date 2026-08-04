@@ -13,7 +13,7 @@ An application may use the dependency graph for sessions, repositories, native b
 A Spec is a stable declaration of how to construct a ViewModel and how to identify it. Application modules export Specs so consumers depend on declarations rather than manually constructing managed instances.
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'Session',
 });
@@ -59,10 +59,10 @@ class SyncViewModel extends ViewModel {
   }
 }
 
-const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
 });
-const syncSpec = viewModelSpec(() => new SyncViewModel(sessionSpec), {
+const syncSpec = viewModelSpec(SyncViewModel, () => new SyncViewModel(sessionSpec), {
   key: 'application-sync',
 });
 
@@ -123,6 +123,7 @@ Both modes:
 - resolve or create the child;
 - make the dependency Binding an owner;
 - add a parent-to-child lifetime edge;
+- mirror the parent's current external root Binding sources to the child;
 - keep the child alive until the edge is released;
 - participate in cycle detection;
 - let forced child disposal invalidate the parent's dependency entry.
@@ -170,6 +171,54 @@ class NetworkCoordinator extends ViewModel {
 
 Do not call `notifyListeners` in `onDependencyNotify` merely to forward the same child event. The Runtime performs that propagation. If the callback also commits parent state with `setState`, that state commit emits its own notification.
 
+## Binding-owned side-effect listeners
+
+Use Binding listener methods when a dependency should run a side effect without broadly notifying the parent:
+
+```ts
+protected override onCreate(): void {
+  this.viewModelBinding.listenStateSelect(
+    connectivitySpec,
+    (state) => state.online,
+    ({ current, previous }) => {
+      this.reconcileConnectivity(previous, current);
+    },
+  );
+}
+```
+
+- `listen(spec, callback)` observes ordinary ViewModel notifications.
+- `listenState(spec, callback)` receives complete `StateViewModel` state changes.
+- `listenStateSelect(spec, selector, callback, equals?)` receives selected state changes; equality defaults to `Object.is`.
+
+These methods resolve and bind through the supplied Spec, so a parent-to-child lifetime edge is established, but they do not enable broad `watch` bubbling. Each returns a disposer for early listener removal; that disposer does not release the Binding's generation ownership. The Binding also removes the listener automatically when either the Binding or the child generation handle is disposed/recycled.
+
+Register a listener once in an owner lifecycle such as `onCreate`. Do not place `listen` in a repeatedly evaluated dependency getter, because every evaluation would register another side effect. Direct `viewModel.subscribe` and `subscribeState` remain lower-level subscriptions whose cleanup must be managed manually.
+
+## Advanced cached lookup
+
+Normal DI should keep a Spec and call `read(spec)` or `watch(spec)`. This lets the declaration create the generation when necessary and keeps construction order explicit.
+
+Cached methods are lookup-only escape hatches for querying a generation that another path has already created:
+
+```ts
+const existing = binding.readCached(SessionViewModel, {
+  key: 'primary-session',
+});
+
+const optional = binding.maybeReadCached(sessionSpec, {
+  key: 'primary-session',
+});
+
+const sessions = binding.watchCachesByTag(SessionViewModel, 'active-sessions');
+```
+
+A cache target may be an explicit ViewModel class or a Spec. `ViewModelSpecOptions.tag` supplies a grouping label and does not participate in identity. The single-value methods accept `{ key?, tag? }`; an exact key has priority, and a missing key may fall back to a matching tag. The `maybeReadCached`/`maybeWatchCached` variants return `undefined` on a miss, while required `readCached`/`watchCached` throw. `readCachesByTag`/`watchCachesByTag` return every match, or an empty array.
+
+No cached method runs a builder or creates a missing generation. On a hit, however, the Binding acquires the existing generation, mirrors parent root sources, and establishes the same parent lifetime edge as Spec-based resolution. `readCached` and `readCachesByTag` do not bubble ordinary notifications; `watchCached` and `watchCachesByTag` do.
+
+Cached lookup couples the caller to cache identity, creation order, miss handling, and possibly multiple tag matches. Keep it for deliberate cross-owner queries rather than using it as the default dependency-resolution style.
+
 ## When dependency getters may be used
 
 A dependency getter may be used only after the parent has been attached and acquired. Safe call sites include:
@@ -205,7 +254,7 @@ Expose data needed by the UI on the parent itself. Let post-commit actions or de
 An unkeyed identity is cached per Binding. A Scope Binding and every parent dependency Binding are different owners.
 
 ```ts
-const localCacheSpec = viewModelSpec(() => new LocalCacheViewModel());
+const localCacheSpec = viewModelSpec(LocalCacheViewModel, () => new LocalCacheViewModel());
 ```
 
 If two parent generations each resolve `localCacheSpec`, they receive different children because each parent owns a different dependency Binding. This is useful for private subgraphs.
@@ -213,12 +262,12 @@ If two parent generations each resolve `localCacheSpec`, they receive different 
 Use a keyed Spec when multiple parents or Scopes in one Runtime must share the same child:
 
 ```ts
-const sharedCacheSpec = viewModelSpec(() => new SharedCacheViewModel(), {
+const sharedCacheSpec = viewModelSpec(SharedCacheViewModel, () => new SharedCacheViewModel(), {
   key: 'application-cache',
 });
 ```
 
-The key is not sufficient by itself. The Spec token and key together form identity. Two independently created Specs with the same key do not share.
+The explicit ViewModel class and key together form keyed identity. Independently created Specs with the same explicit class and key share within one Runtime. The builder-only compatibility overload instead gives every independently created base Spec a unique fallback token.
 
 ## Connecting React owners to an application container
 
@@ -232,7 +281,7 @@ Within one realm, a React Scope can receive an application Runtime:
 
 The Scope creates its own Binding. Therefore:
 
-- it shares a keyed application Spec with a plain application Binding when token and key match;
+- it shares a keyed application Spec with a plain application Binding when explicit class identity and key match;
 - it receives a private instance for an unkeyed Spec;
 - disposing the Scope releases only the Scope Binding;
 - the code that created `applicationRuntime` remains responsible for disposing it.

@@ -14,10 +14,16 @@
 
 ## 工作规则
 
-- 优先使用稳定的模块级 `ViewModelSpec`，通过 `watch/read` 解析。
+- 优先使用稳定的模块级 `viewModelSpec(ViewModelType, builder, options)`，通过
+  `watch/read` 解析；builder-only overload 仅作为独立 token 的兼容入口。
 - unkeyed 实例在 Binding/Scope 内私有；只有显式 key 才跨 Scope 共享。
+- cached/tag API 仅用于查询其他路径已创建的缓存；命中后同样 bind 并建立
+  parent edge，正常依赖解析不要用它替代 Spec `watch/read`。
 - `aliveForever` 必须带显式 key；`recycle` 是影响所有 owner 的强制回收。
 - parent ViewModel 通过 getter 和自己的 `viewModelBinding` 解析 child，不长期缓存 child。
+- parent 的 root owner source 必须实时传播给已解析 child；direct 与各 parent path
+  分别计数，首 source `onBind`、末 source `onUnbind`。
+- 整段同步通知级联共享 transaction，并按 Binding identity 去重；异步通知开启新 transaction。
 - 依赖 getter 仅供 commit 后的 ViewModel action/生命周期使用，不得在 React render 或 selector 中读取。
 - React render 只能 `prepare` 纯对象；owner、`onCreate` 与 `onBind` 必须在 commit 后建立。
 - 保持 RN/Electron 平台入口，禁止新增 `view_model/react` 或 Web 支持承诺。

@@ -10,6 +10,8 @@ ownership, notifications, and lifecycle.
 - [ViewModel styles](#viewmodel-styles)
 - [Spec and identity](#spec-and-identity)
 - [Runtime and Binding](#runtime-and-binding)
+- [Advanced cached and tag lookup](#advanced-cached-and-tag-lookup)
+- [Binding-owned listeners](#binding-owned-listeners)
 - [Application-wide DI](#application-wide-di)
 - [Parent-child module composition](#parent-child-module-composition)
 - [Notifications](#notifications)
@@ -27,6 +29,9 @@ import {
   ViewModelBinding,
   ViewModelRuntime,
   ViewModelSpec,
+  type ViewModelCacheLookup,
+  type ViewModelCacheTarget,
+  type ViewModelType,
   viewModelSpec,
 } from 'view_model/core';
 ```
@@ -101,28 +106,46 @@ direct subscriptions, not Binding-owned subscriptions.
 
 ## Spec and identity
 
-Declare Specs once at module scope:
+Prefer an explicit ViewModel class as the runtime identity and declare Specs
+once at module scope:
 
 ```ts
-export const cartSpec = viewModelSpec(() => new CartViewModel(), {
+export const cartSpec = viewModelSpec(CartViewModel, () => new CartViewModel(), {
   debugLabel: 'Cart',
 });
 ```
 
-Identity is `(Spec token, key)`:
+Inside one Runtime, explicit identity is the ViewModel type plus its effective
+key:
 
-- The base Spec receives a unique token when constructed.
-- `withKey(key)` returns a new Spec that preserves the base token.
-- An unkeyed Spec caches one generation per resolving Binding.
-- A keyed Spec caches one generation across Bindings in the same Runtime.
+- Omitting `key` selects a Binding-private effective key. The same explicit
+  type resolves one generation per Binding, including through separate explicit
+  Spec objects.
+- An explicit key selects one generation per type + key across Bindings in the
+  same Runtime.
+- Independent explicit Specs with the same type and key share. The builder that
+  wins the first cache miss constructs the generation, so do not give that
+  identity conflicting builders or lifetime options.
+- The winning explicit-type builder must return that type or a subclass.
+  Abstract ViewModel identity classes with protected constructors are valid.
+- `withKey(key)` preserves the explicit type identity while deriving a keyed
+  variant.
 - Independent Runtimes never share an object.
-- Two independent `viewModelSpec` calls never share, even with the same class
-  and key.
 - A key does not retain an instance. `aliveForever` controls zero-owner
   retention and requires an explicit key.
 
-Use a stable primitive or symbol key with business meaning. Do not create Specs
-in React render or use random/render-varying keys.
+The builder-only form `viewModelSpec(() => new CartViewModel(), options)` is a
+compatibility fallback. Every builder-only Spec receives an independent token;
+separate builder-only declarations do not share even when their class and key
+look identical. `withKey` preserves that fallback token.
+
+TypeScript generic parameters are erased, so only the explicit class argument
+provides type identity at runtime. `debugLabel` and `tag` are metadata and never
+participate in identity.
+
+Use a stable primitive or symbol key with business meaning. Keep Specs at module
+scope to avoid render-time allocations and keep builders/options stable. Do not
+use random or render-varying keys.
 
 ## Runtime and Binding
 
@@ -143,14 +166,75 @@ runtime.dispose();
 
 `read(spec)` resolves and owns the instance but ignores ordinary ViewModel
 notifications. `watch(spec)` resolves, owns, and propagates ordinary
-notifications to `onUpdate`; its optional listener stays registered until the
-Binding is disposed. Avoid repeatedly calling `watch(spec, listener)` because
-there is no per-listener disposer on this imperative API.
+notifications to `onUpdate`; its optional listener belongs to the current
+Binding entry and has no per-listener disposer. Prefer the Binding-owned
+`listen*` APIs when a side-effect subscription needs explicit or automatic
+cleanup.
 
 Binding and Runtime disposal are idempotent. An externally injected Runtime is
 always owned by the caller. Automatic instance disposal after the last owner
 leaves is scheduled in a microtask; Runtime disposal and recycle are forceful
 and synchronous aside from user work started by application code.
+
+## Advanced cached and tag lookup
+
+Normal dependencies should retain a Spec and resolve with `read(spec)` or
+`watch(spec)`. Cached APIs are advanced lookup-only tools for cross-owner cases
+where another path has already created a generation:
+
+```ts
+const exact = binding.readCached(DeviceViewModel, { key: deviceId });
+const optional = binding.maybeWatchCached(DeviceViewModel, {
+  key: deviceId,
+  tag: 'connected-device',
+});
+const connected = binding.readCachesByTag(DeviceViewModel, 'connected-device');
+```
+
+The full family is:
+
+- `readCached` / `watchCached`: require a hit or throw `ViewModelSpecError`;
+- `maybeReadCached` / `maybeWatchCached`: return `undefined` on a miss;
+- `readCachesByTag` / `watchCachesByTag`: return every matching generation, or
+  an empty array.
+
+Targets may be an explicit `ViewModelType` or a Spec. A class target follows
+explicit type identity; a builder-only compatibility identity can only be
+targeted through its Spec. A singular lookup accepts `{ key?, tag? }`: an exact
+key is tried first, and a supplied tag can provide fallback selection. Prefer an
+exact key when multiple generations may exist.
+
+Declare `tag` in `ViewModelSpecOptions` only as query metadata. It does not
+affect identity or create another generation. Cached misses never run a builder.
+Hits still establish normal Binding/parent ownership and source propagation;
+read variants ignore ordinary notifications, while watch variants propagate
+them.
+
+## Binding-owned listeners
+
+Use Binding-owned listeners for imperative side effects without enabling broad
+`watch` propagation:
+
+```ts
+const stopNotifications = binding.listen(deviceSpec, onDeviceChanged);
+const stopState = binding.listenState(counterSpec, onCounterStateChanged);
+const stopSelection = binding.listenStateSelect(
+  counterSpec,
+  (state) => state.status,
+  onStatusChanged,
+);
+```
+
+`listen` observes ordinary ViewModel notifications. `listenState` receives
+`{ previous, current }` state diffs. `listenStateSelect` emits selected diffs
+only when its equality function, `Object.is` by default, says the selection
+changed.
+
+Each method resolves and owns its Spec with read-style propagation and returns
+an idempotent disposer for early cleanup. The Binding also removes these
+subscriptions automatically when it is disposed or when that generation is
+disposed/recycled. In contrast, direct `vm.subscribe` and `vm.subscribeState`
+remain manually owned by their caller.
 
 ## Application-wide DI
 
@@ -160,7 +244,7 @@ platform React Scopes can use that same Runtime:
 ```ts
 export const appRuntime = new ViewModelRuntime();
 
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'session',
   aliveForever: true,
 });
@@ -202,6 +286,12 @@ Every parent generation has a stable private dependency Binding. Resolving a
 child establishes a parent-to-child ownership edge, so the child cannot be
 automatically disposed before that parent generation.
 
+Root ownership is source-aware. Existing root Binding sources that own the
+parent propagate to every resolved child, and later root bind/unbind changes are
+mirrored through the child graph in real time. Direct and multiple-parent paths
+are reference-counted independently, so `onBind(id)` runs for the first logical
+source and `onUnbind(id)` for the last.
+
 Use a getter rather than a cached field. Recycle can dispose a child while the
 parent is still owned; the next getter access can then resolve a fresh
 generation.
@@ -226,6 +316,13 @@ selector.
 - `watch` owners propagate ordinary notifications.
 - Direct `vm.subscribe` and `vm.subscribeState` callbacks run synchronously and
   are not suppressed by Runtime pause.
+- One complete synchronous notification cascade shares an update transaction,
+  including nested `notifyListeners` calls and parent propagation. The same
+  callback is queued once per Binding/callback pair, but the same function used
+  by two Bindings runs once for each Binding.
+- Parent propagation is deduplicated per parent generation in that transaction,
+  so valid diamond graphs notify each parent once.
+- A microtask or later asynchronous notification starts a new transaction.
 - Listener errors are aggregated after other listeners have had a chance to
   run.
 
@@ -266,10 +363,10 @@ prevent actions, state mutations, or direct subscriptions from running.
 
 `runtime.recycle(viewModel)` force-disposes that one generation.
 
-`runtime.recycle(spec)` force-disposes every Runtime handle whose token and key
-match the Spec. For a keyed Spec this is normally one shared generation. For an
-unkeyed Spec it can be one private generation per Binding and therefore return
-a count greater than one.
+`runtime.recycle(spec)` force-disposes every Runtime handle matching the Spec's
+identity and effective key. For a keyed Spec this is normally one shared
+generation. For an unkeyed Spec it can be one private generation per Binding
+and therefore return a count greater than one.
 
 Recycle ignores all owners and also disposes `aliveForever` instances. Mounted
 adapters are notified only after the old generation and its exclusively owned
@@ -286,6 +383,6 @@ Specs, dependency cycles, and unmanaged ViewModel access. Preserve these errors
 instead of swallowing lifecycle failures; several listener/cleanup failures can
 arrive as `AggregateError`.
 
-Do not use Flutter-only concepts: `tag`, cached lookup, `argN` Specs, proxy or
-override APIs, annotations/generation, ChangeNotifier integration, global
+Do not use Flutter-only concepts: `argN` Specs, proxy or override APIs,
+annotations/generation, ChangeNotifier integration, global
 configuration/reset, DevTools, widget mixins, or route/ticker pause providers.

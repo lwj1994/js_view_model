@@ -10,7 +10,7 @@ This minimal example demonstrates:
 - a read hook used only to obtain actions;
 - automatic Runtime pause/resume through React Native `AppState`.
 
-> This example requires the v0.1 Alpha `view_model` API. It is for React
+> This example requires the current `view_model` API. It is for React
 > Native applications, not React Web.
 
 The `App.tsx` filename below labels an illustrative snippet. This directory

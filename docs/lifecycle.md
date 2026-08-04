@@ -2,7 +2,7 @@
 
 [简体中文](./zh/lifecycle.md) · [Documentation index](./README.md)
 
-> This guide describes the current v0.1 alpha behavior for React Native and Electron applications.
+> This guide describes the supported lifecycle behavior for React Native and Electron applications.
 
 Lifecycle is managed at two related levels:
 
@@ -237,7 +237,7 @@ Electron main has no React lifecycle adapter. Its owner must call `runtime.pause
 
 ## Force recycle
 
-`runtime.recycle(viewModel)` ends one concrete generation. `runtime.recycle(spec)` ends every current handle in that Runtime with the same Spec token and key. An unkeyed Spec may therefore recycle one private generation per Binding.
+`runtime.recycle(viewModel)` ends one concrete generation. `runtime.recycle(spec)` ends every current handle in that Runtime with the Spec's resolved identity and key. Explicit-type Specs therefore share the type identity, while builder-only Specs use their compatibility token. An unkeyed Spec may recycle one private generation per Binding.
 
 Recycle:
 

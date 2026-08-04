@@ -2,7 +2,7 @@
 
 [English](../api.md) · [文档索引](./README.md)
 
-> 本参考描述 v0.1 alpha 对 React Native、Electron renderer 与 Electron main/core 的受支持接口。精确泛型推导仍以当前 package 生成的 TypeScript declarations 为准。
+> 本参考描述 React Native、Electron renderer 与 Electron main/core 的正式支持接口。精确泛型推导仍以当前 package 生成的 TypeScript declarations 为准。
 
 ## Package 入口
 
@@ -24,10 +24,15 @@ ViewModelRuntime
 ├── ViewModelBinding (plain owner)
 ├── ViewModelBinding (React Scope owner)
 └── ViewModel generation
+    ├── external root Binding sources
     └── ViewModelBinding (generation-owned dependency owner)
+        └── child generation
+            └── mirrored external root Binding sources
 ```
 
-Keyed identity 与 Runtime pause 都局限在 Runtime 内。不同 Runtime object 或 Electron process 之间不会共享受管理 identity。
+每个 parent generation 都有一个稳定的 dependency Binding。它会把当前 external root Binding source 镜像给已解析 child，之后 source 增加或移除时也会同步。direct ownership 与每条 parent path 都独立计数。
+
+Keyed identity、dependency propagation 与 Runtime pause 都局限在 Runtime 内。不同 Runtime object 或 Electron process 之间不会共享受管理 identity。
 
 ## `ViewModel`
 
@@ -47,7 +52,7 @@ class CounterViewModel extends ViewModel {
   }
 }
 
-export const counterSpec = viewModelSpec(() => new CounterViewModel());
+export const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 ```
 
 ### 公开属性
@@ -94,11 +99,17 @@ unsubscribe();
 
 Direct subscription 不由 Binding 持有，也不会被 Runtime pause 延迟。应保存并调用返回的 cleanup，或将它注册到另一个受管理 owner 的生命周期中。
 
+subscription 需要由 Binding 持有并自动清理时，使用 `ViewModelBinding.listen`。
+
 ### Protected notification methods
 
 #### `notifyListeners(action?: unknown): void`
 
-递增 `version`，通知 direct subscriber，然后进入 Runtime propagation transaction。listener failure 会被收集，并通过 `AggregateError` 重新抛出。
+在递增 `version` 和通知 direct subscriber 前开启或复用 propagation transaction。该 transaction 会包住整段同步级联，包括 dependency 冒泡与嵌套的同步 `notifyListeners` 调用。
+
+Binding callback 按 `(owner Binding identity, callback identity)` 去重。同一 callback 经由一个 Binding 多次到达时只运行一次；两个不同 Binding 即使复用该 callback，也会各运行一次。同一 parent generation 每个 transaction 最多冒泡一次。后续 microtask 或 Promise continuation 会开启新的 transaction。
+
+listener failure 会被收集，并通过 `AggregateError` 重新抛出。
 
 #### `update<TResult>(action: unknown, mutation: () => TResult): TResult`
 
@@ -145,8 +156,8 @@ protected onDispose(): void;
 ```
 
 - `onCreate` 在第一个已经 commit 的 acquire 时运行一次。
-- `onBind` 在新的 Binding id 成为 generation owner 时运行。
-- `onUnbind` 在该 id 释放 generation 时运行。
+- `onBind` 在某个 Binding id 的首个 ownership source 到达 generation 时运行。
+- `onUnbind` 只在该 id 的最后一个 source 移除后运行。direct ownership 与多条 parent path 会按 source 独立计数。
 - `onPause` 与 `onResume` 跟随 Runtime-wide pause transition。
 - watched child 通知被 parent 重新发送前，会运行 `onDependencyNotify`。
 - `onDispose` 在 generation 永久结束时运行一次。
@@ -200,6 +211,8 @@ interface StateChange<TState> {
 
 返回的 unsubscribe function 必须显式管理。direct state listener 不会被 Runtime pause 延迟。
 
+需要由 Binding 持有的 state side effect 时，使用 `ViewModelBinding.listenState` 或 `listenStateSelect`。
+
 ### `setState(nextState, action?): boolean`
 
 Protected。当 configured equality 返回 false 时替换 state，通知 `subscribeState` listener，然后通知普通 ViewModel listener。发生 transition 时返回 `true`，因判等一致而抑制时返回 `false`。
@@ -210,12 +223,12 @@ Protected。根据 current state 计算 next state，并委托给 `setState`。
 
 ## `ViewModelSpec<T>`
 
-Spec 是稳定 builder 与 runtime identity token。
+Spec 组合了显式 runtime ViewModel type、builder 与 lifecycle policy。显式传入 class 是推荐的 identity contract。
 
 ### 创建
 
 ```ts
-const spec = new ViewModelSpec(() => new ExampleViewModel(), {
+const spec = new ViewModelSpec(ExampleViewModel, () => new ExampleViewModel(), {
   key: 'example',
   aliveForever: false,
   debugLabel: 'ExampleViewModel',
@@ -225,9 +238,15 @@ const spec = new ViewModelSpec(() => new ExampleViewModel(), {
 helper 等价，并且通常更推荐：
 
 ```ts
-const spec = viewModelSpec(() => new ExampleViewModel(), {
+const spec = viewModelSpec(ExampleViewModel, () => new ExampleViewModel(), {
   key: 'example',
 });
+```
+
+builder-only overload 仍作为兼容 fallback 保留：
+
+```ts
+const legacySpec = viewModelSpec(() => new ExampleViewModel());
 ```
 
 ### `ViewModelSpecOptions`
@@ -235,21 +254,25 @@ const spec = viewModelSpec(() => new ExampleViewModel(), {
 ```ts
 interface ViewModelSpecOptions {
   readonly key?: ViewModelKey;
+  readonly tag?: unknown;
   readonly aliveForever?: boolean;
   readonly debugLabel?: string;
 }
 ```
 
-- `key` 让 token/key identity 能够由同一 Runtime 的多个 Binding 共享。
+- `key` 让 Spec identity 可由同一 Runtime 内的多个 Binding 共享。需要让独立创建的 Spec 共享时，应与显式 ViewModel class 一起使用。
+- `tag` 是高级 cached lookup 使用的分组 label。它通过 `Object.is` 比较，不参与 identity。
 - `aliveForever` 跳过普通零 owner dispose，并要求显式 key。
 - `debugLabel` 用于诊断与 generation description；它不参与 identity。
 
 ### Identity 属性
 
 ```ts
+readonly type: ViewModelType<T> | undefined;
 readonly token: symbol;
 readonly builder: ViewModelBuilder<T>;
 readonly key: ViewModelKey | undefined;
+readonly tag: unknown;
 readonly aliveForever: boolean;
 readonly debugLabel: string;
 ```
@@ -257,18 +280,21 @@ readonly debugLabel: string;
 Runtime identity 为：
 
 ```text
-unkeyed = Spec token inside one Binding
-keyed   = Spec token + key inside one Runtime
+explicit type + no key = ViewModel class inside one Binding
+explicit type + key    = ViewModel class + key inside one Runtime
+builder-only fallback  = unique Spec token under the same key/no-key scopes
 ```
 
-TypeScript 泛型类型在运行时不存在。即使 builder 与 key 看起来完全一致，独立 Spec object 仍有独立 token。应在模块顶层声明 Spec。
+TypeScript 泛型类型在运行时不存在，因此 `ViewModelSpec<T>` 无法自行恢复 `T`。显式传入相同 class 与 key 的独立 Spec，会在同一 Runtime 中共享一个 keyed generation。每个独立创建的 builder-only base Spec 则会获得唯一 token，即使 builder 与 key 看起来完全一致。builder-only Spec 应稳定声明在 module scope；共享 identity 应优先使用显式 type overload。
+
+显式 type Spec 会在运行时校验 builder 结果；结果必须是该 type 或其子类的实例。identity class 可以是带 protected constructor 的抽象类。
 
 ### `withKey(key): ViewModelSpec<T>`
 
-返回一个使用指定 key 的新 Spec wrapper，同时保留原 token、builder、retention option 与 debug label。
+返回一个使用指定 key 的新 Spec wrapper，同时保留原显式 type/fallback token、builder、tag、retention option 与 debug label。
 
 ```ts
-const baseSpec = viewModelSpec(() => new EditorViewModel());
+const baseSpec = viewModelSpec(EditorViewModel, () => new EditorViewModel());
 const primaryEditorSpec = baseSpec.withKey('primary-editor');
 ```
 
@@ -323,7 +349,8 @@ runtime.recycle(spec);
 强制 dispose 匹配 generation，并返回成功 recycle 的数量。
 
 - ViewModel target 选择一个具体 generation；
-- Spec target 选择所有具有相同 token 与 key 的当前 handle；
+- Spec target 选择所有 runtime identity 与 key 相同的当前 handle；
+- 因此，显式 type 相同的独立 Spec 可以选择同一 keyed generation；builder-only Spec 则按 fallback token 匹配；
 - 因此，unkeyed Spec 可能匹配每个 Binding 各自的私有 generation；
 - 当前 owner 与 `aliveForever` 都无法阻止 recycle。
 
@@ -350,6 +377,8 @@ binding.isDisposed;
 ```
 
 React 应用代码通常通过 platform Scope context 获得 Binding。Electron main、bootstrap code、service 与 test 会显式创建 plain Binding。
+
+parent ViewModel 通过稳定 dependency Binding 解析 child 时，Runtime 会建立 parent-to-child lifetime edge，并把 parent 当前所有 external root Binding source 镜像给 child；root 后续 acquire 或 release 时也会保持同步。direct child owner 与每条 parent path 都贡献独立 source，因此移除其中一条 path 不会过早调用 `onUnbind` 或销毁 child。
 
 ### `read(spec): T`
 
@@ -382,11 +411,78 @@ binding.watch(modelSpec, () => {
 
 在 parent ViewModel 内，`watch` 还会通过 `onDependencyNotify(child)` 冒泡 child 通知，然后通知 parent。
 
+### 高级 cached lookup
+
+普通依赖注入应保留 Spec，并使用 `read(spec)` 或 `watch(spec)`。cached lookup 是一个高级逃生口，只用于有意查询已经由其他路径创建的 generation：
+
+```ts
+type ViewModelCacheTarget<T extends ViewModel> = ViewModelType<T> | ViewModelSpec<T>;
+
+interface ViewModelCacheLookup {
+  readonly key?: ViewModelKey;
+  readonly tag?: unknown;
+}
+
+interface ViewModelBinding {
+  readCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup?: ViewModelCacheLookup,
+  ): T;
+  watchCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup?: ViewModelCacheLookup,
+  ): T;
+  maybeReadCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup?: ViewModelCacheLookup,
+  ): T | undefined;
+  maybeWatchCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup?: ViewModelCacheLookup,
+  ): T | undefined;
+  readCachesByTag<T extends ViewModel>(target: ViewModelCacheTarget<T>, tag: unknown): T[];
+  watchCachesByTag<T extends ViewModel>(target: ViewModelCacheTarget<T>, tag: unknown): T[];
+}
+```
+
+target 提供显式 ViewModel class identity 或 Spec identity；lookup object 选择缓存的 key/tag。target Spec 自身的 key 与 tag 不会成为隐式 lookup option。精确 key 命中优先。若 key 未命中且提供了 tag，则回退到最近注册的相同 target/tag。没有 key 时，单值方法返回最近注册的匹配 target；提供 tag 时还会按 tag 过滤。tag 通过 `Object.is` 比较。
+
+这些方法只查询缓存：不会运行 builder，也不会创建缺失 generation。`readCached` 与 `watchCached` 未命中时抛出 `ViewModelSpecError`；对应 `maybe` 变体返回 `undefined`。tag batch 方法返回所有匹配项，未命中时返回空数组。
+
+cache hit 不是一个未托管的借用引用。它会让当前 Binding acquire generation，镜像 parent ownership source，并建立与 Spec-based resolution 相同的 parent-to-child lifetime edge。`read` 变体不接收或冒泡普通 ViewModel 通知；`watch` 变体会接收或冒泡，而所有变体都会通过 Binding ownership 感知 dispose/recycle。
+
+### Binding 托管的 side-effect listener
+
+```ts
+interface ViewModelBinding {
+  listen<T extends ViewModel>(
+    spec: ViewModelSpec<T>,
+    onChanged: ViewModelListener,
+  ): ViewModelDispose;
+
+  listenState<TState>(
+    spec: ViewModelSpec<StateViewModel<TState>>,
+    onChanged: StateListener<TState>,
+  ): ViewModelDispose;
+
+  listenStateSelect<TState, TSelection>(
+    spec: ViewModelSpec<StateViewModel<TState>>,
+    selector: (state: TState) => TSelection,
+    onChanged: StateListener<TSelection>,
+    equals?: Equality<TSelection>,
+  ): ViewModelDispose;
+}
+```
+
+每个方法都会通过 Spec 解析、acquire generation，但不增加 broad `watch` propagation，并安装不会被 Runtime pause 延迟的 direct side-effect listener。只有 selected value 变化时，`listenStateSelect` 才调用 `onChanged`；其 equality 默认使用 `Object.is`。
+
+Binding 或 generation handle dispose/recycle 时，这些 listener 都会自动移除。返回的 disposer 可用于提前移除 listener，并且可安全重复调用；它只移除该 subscription，不会释放 Binding 对 generation 的 ownership。应在 `onCreate` 等 owner lifecycle 中只注册一次；不要从反复求值的 getter 或 React render 注册。
+
 ### `dispose(): void`
 
 以幂等方式移除 Binding 持有的所有 subscription，并释放每个已 acquire generation。普通零 owner cleanup 会延迟到 microtask，并可由立即 reacquire 取消。
 
-dispose 后使用 `read`、`watch` 或 framework adapter method 会抛出 `ViewModelBindingDisposedError`。
+dispose 后使用 resolution、cached lookup、listener 或 framework adapter method 会抛出 `ViewModelBindingDisposedError`。
 
 ### Framework adapter methods
 
@@ -407,6 +503,8 @@ getSnapshot(spec, mode): string;
 ## React hooks
 
 两个 platform entry 导出相同 hook API。
+
+Scope 是 owner 边界：同一 Scope 下的所有 hook 共享它的 Binding。单个 hook subscription 可以独立 unmount，但 ViewModel ownership 会保留到该 Scope Binding 释放 generation 或 Scope dispose。React render 只能 prepare provisional object；commit 才建立 ownership 并执行 lifecycle acquire。
 
 ### `useViewModel(spec): T`
 
@@ -530,6 +628,10 @@ type ViewModelMode = 'watch' | 'read';
 type ViewModelListener = () => void;
 type ViewModelDispose = () => void;
 type ViewModelBuilder<T extends ViewModel> = () => T;
+interface ViewModelType<T extends ViewModel> extends Function {
+  readonly prototype: T;
+}
+type ViewModelCacheTarget<T extends ViewModel> = ViewModelType<T> | ViewModelSpec<T>;
 type Equality<T> = (left: T, right: T) => boolean;
 ```
 
@@ -549,7 +651,7 @@ interface StateChange<TState> {
 type StateListener<TState> = (change: StateChange<TState>) => void;
 ```
 
-configuration types：
+configuration 与 lookup types：
 
 ```ts
 interface ViewModelBindingOptions {
@@ -557,8 +659,14 @@ interface ViewModelBindingOptions {
   readonly onUpdate?: ViewModelListener;
 }
 
+interface ViewModelCacheLookup {
+  readonly key?: ViewModelKey;
+  readonly tag?: unknown;
+}
+
 interface ViewModelSpecOptions {
   readonly key?: ViewModelKey;
+  readonly tag?: unknown;
   readonly aliveForever?: boolean;
   readonly debugLabel?: string;
 }
@@ -568,15 +676,15 @@ interface ViewModelSpecOptions {
 
 所有 core error 都继承 `ViewModelError`：
 
-| Error                           | 含义                                                                |
-| ------------------------------- | ------------------------------------------------------------------- |
-| `ViewModelError`                | package error 基类。                                                |
-| `ViewModelDisposedError`        | 某个操作使用了 disposed ViewModel generation。                      |
-| `ViewModelRuntimeDisposedError` | 某个操作需要已经 disposed 的 Runtime。                              |
-| `ViewModelBindingDisposedError` | 某个操作需要已经 disposed 的 Binding。                              |
-| `ViewModelSpecError`            | Spec/builder 或 generation preparation invariant 失败。             |
-| `ViewModelDependencyCycleError` | 检测到直接或间接 dependency owner cycle；该 error 暴露 cycle path。 |
-| `UnmanagedViewModelError`       | Runtime attach 前请求了 `viewModelBinding`。                        |
+| Error                           | 含义                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------- |
+| `ViewModelError`                | package error 基类。                                                            |
+| `ViewModelDisposedError`        | 某个操作使用了 disposed ViewModel generation。                                  |
+| `ViewModelRuntimeDisposedError` | 某个操作需要已经 disposed 的 Runtime。                                          |
+| `ViewModelBindingDisposedError` | 某个操作需要已经 disposed 的 Binding。                                          |
+| `ViewModelSpecError`            | Spec/builder、required cached lookup 或 generation preparation invariant 失败。 |
+| `ViewModelDependencyCycleError` | 检测到直接或间接 dependency owner cycle；该 error 暴露 cycle path。             |
+| `UnmanagedViewModelError`       | Runtime attach 前请求了 `viewModelBinding`。                                    |
 
 listener 与 cleanup failure 也可能通过标准 JavaScript `AggregateError` 报告，其中包含所有已收集 error。
 
@@ -595,6 +703,6 @@ import { ViewModelScope } from 'view_model/react';
 - SSR 或 hydration；
 - React Server Components；
 - browser-only lifecycle adapter；
-- Flutter API，例如 tag lookup、cached lookup、argument Spec、global initialization/configuration、code generation 或 DevTools。
+- Flutter API，例如 argument Spec、global initialization/configuration、code generation 或 DevTools。
 
 只应使用已经记录的 platform entry 与当前 TypeScript declaration。

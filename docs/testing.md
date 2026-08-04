@@ -12,6 +12,7 @@ The most valuable tests cover behavior that ordinary UI snapshots cannot prove:
 - owner release and final disposal;
 - `aliveForever` and recycle;
 - parent-child dependency edges and cycles;
+- source-aware root propagation and synchronous notification transaction deduplication;
 - pause token aggregation;
 - React commit, StrictMode, and generation replacement;
 - React Native AppState or Electron focus/visibility mapping.
@@ -66,10 +67,10 @@ class CounterViewModel extends StateViewModel<CounterState> {
   }
 }
 
-const counterSpec = viewModelSpec(() => new CounterViewModel());
+const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 ```
 
-Keep each test's Spec local unless the test is intentionally proving module-level identity. This prevents one test from accidentally relying on another test's declaration or container.
+Keep each test's Spec local unless the test is intentionally proving module-level identity. Use the explicit-type overload for normal tests; this prevents one test from accidentally relying on another test's declaration or container without giving up production identity semantics.
 
 ## Test immutable state and direct subscriptions
 
@@ -77,7 +78,7 @@ Keep each test's Spec local unless the test is intentionally proving module-leve
 it('notifies only when the state reference changes', () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
   try {
     const counter = binding.read(spec);
@@ -111,7 +112,7 @@ it('read retains without ordinary Binding updates; watch propagates', () => {
   const onUpdate = vi.fn();
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding({ onUpdate });
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
   try {
     const counter = binding.read(spec);
@@ -147,7 +148,7 @@ async function flushDisposals(): Promise<void> {
 it('disposes after the final owner leaves', async () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
   const counter = binding.read(spec);
 
   binding.dispose();
@@ -169,7 +170,7 @@ it('keeps unkeyed identity private to a Binding', () => {
   const runtime = new ViewModelRuntime();
   const first = runtime.createBinding();
   const second = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
   try {
     expect(first.read(spec)).toBe(first.read(spec));
@@ -183,16 +184,19 @@ it('keeps unkeyed identity private to a Binding', () => {
 ```
 
 ```ts
-it('shares the same token and key within one Runtime', () => {
+it('shares explicit type and key across independent Specs', () => {
   const runtime = new ViewModelRuntime();
   const first = runtime.createBinding();
   const second = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel(), {
+  const firstSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
+    key: 'shared-counter',
+  });
+  const secondSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
     key: 'shared-counter',
   });
 
   try {
-    expect(second.read(spec)).toBe(first.read(spec));
+    expect(second.read(secondSpec)).toBe(first.read(firstSpec));
   } finally {
     first.dispose();
     second.dispose();
@@ -201,10 +205,10 @@ it('shares the same token and key within one Runtime', () => {
 });
 ```
 
-Also test the negative case when identity is important: two separately created Specs with the same textual key have different tokens and must not share.
+The builder-only overload is a compatibility fallback. Each separately created builder-only Spec receives a private token, so equal textual keys do not make those fallback Specs share:
 
 ```ts
-it('does not share a key across different Spec tokens', () => {
+it('keeps independent builder-only fallback tokens isolated', () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
   const firstSpec = viewModelSpec(() => new CounterViewModel(), { key: 'same' });
@@ -264,7 +268,7 @@ it('runs the activated generation lifecycle in order', async () => {
   const events: LifecycleEvent[] = [];
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding({ id: 'screen' });
-  const spec = viewModelSpec(() => new LifecycleProbe(events));
+  const spec = viewModelSpec(LifecycleProbe, () => new LifecycleProbe(events));
 
   binding.read(spec);
   expect(events).toEqual(['create', 'bind:screen']);
@@ -291,7 +295,7 @@ it('resumes only after the final pause token is removed', () => {
   const events: LifecycleEvent[] = [];
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding({ onUpdate: updates });
-  const spec = viewModelSpec(() => new LifecycleProbe(events));
+  const spec = viewModelSpec(LifecycleProbe, () => new LifecycleProbe(events));
   const appToken = {};
   const windowToken = {};
 
@@ -352,8 +356,8 @@ it('bubbles watched child changes to the parent owner', () => {
   const rootUpdate = vi.fn();
   const runtime = new ViewModelRuntime();
   const root = runtime.createBinding({ onUpdate: rootUpdate });
-  const childSpec = viewModelSpec(() => new ChildViewModel());
-  const parentSpec = viewModelSpec(() => new ParentViewModel(childSpec));
+  const childSpec = viewModelSpec(ChildViewModel, () => new ChildViewModel());
+  const parentSpec = viewModelSpec(ParentViewModel, () => new ParentViewModel(childSpec));
 
   try {
     const parent = root.watch(parentSpec);
@@ -372,6 +376,10 @@ it('bubbles watched child changes to the parent owner', () => {
 
 Write the corresponding `childRead` test and assert that an ordinary child notification does not change `parent.version` or call the root update. Both modes should still keep the child alive until the parent edge is released.
 
+For source-aware child lifetime, create a shared keyed parent with root Bindings A and B. Resolve an unkeyed child both before and after adding B, then assert that the child receives the current root IDs in `onBind`, removes only A when A leaves, preserves the same generation while B remains, and receives one `onUnbind` only after the last direct or parent source for each logical root ID leaves. Include a direct leaf path plus two parent paths, and extend one case through multiple dependency levels.
+
+For synchronous notification transactions, use a diamond graph and optionally let the root watch the shared leaf directly. One synchronous leaf change should notify each parent and each Binding owner/callback pair at most once. If two Bindings deliberately reuse the same callback function, each owner/callback pair should still run once; a notification scheduled in a later microtask should start a new transaction.
+
 For complex module graphs, add an explicit cycle test and expect `ViewModelDependencyCycleError`. A cycle failure should not leave a half-created generation or acquired resource behind.
 
 ## Test `aliveForever` and recycle separately
@@ -382,7 +390,7 @@ For complex module graphs, add an explicit cycle test and expect `ViewModelDepen
 it('retains an aliveForever generation until explicit invalidation', async () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel(), {
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
     key: 'application-counter',
     aliveForever: true,
   });
@@ -446,7 +454,7 @@ class FakeLifecycle implements ElectronLifecycleSource {
 it('rerenders a selector only when its selected value changes', async () => {
   const runtime = new ViewModelRuntime();
   const lifecycle = new FakeLifecycle();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
   let counter: CounterViewModel | undefined;
   let selected = -1;
   let renders = 0;

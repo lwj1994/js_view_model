@@ -6,15 +6,40 @@ Significant changes to this project are recorded here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-04
+
+### Added
+
+- Added explicit ViewModel type identity through
+  `viewModelSpec(MyViewModel, builder, options)`. Independent explicit Specs
+  with the same type and key now share within one Runtime; the builder-only
+  form retains its independent-token compatibility behavior.
+- Added advanced lookup-only cached/tag Binding APIs, including required,
+  optional, and tag-batch read/watch variants.
+- Added Binding-owned `listen`, `listenState`, and `listenStateSelect`
+  subscriptions with explicit disposers and automatic cleanup on Binding or
+  generation disposal.
+
 ### Changed
 
+- Root Binding owner sources now propagate through resolved parent-child graphs
+  and mirror later bind/unbind changes in real time.
+- A complete synchronous notification cascade now shares one transaction,
+  deduplicating each callback per Binding while preserving deliveries to
+  distinct Bindings. Asynchronous notifications start a new transaction.
 - Added mirrored English and Chinese module documentation.
 - Documented application-wide dependency injection as a core capability and
   clarified that Scope is a React owner adapter.
 - Added the externally reusable `js-view-model` skill.
 - Standardized source-code comments in English.
 
-## [0.1.0] - Alpha
+### Fixed
+
+- Explicit type Specs now reject builder results that are not instances of the
+  declared type or one of its subclasses. Abstract identity classes with
+  protected constructors are supported.
+
+## [0.1.0] - 2026-08-03
 
 ### Added
 
@@ -30,9 +55,8 @@ Significant changes to this project are recorded here.
 - Added ESM/CJS output and a shared cross-condition ViewModel/Spec identity
   protocol.
 
-### Known limitations
+### Limitations
 
-- v0.1 is Alpha and its API may change.
 - Only React Native and Electron applications are supported.
 - Ordinary React Web, SSR, React Server Components, and general DOM
   applications are unsupported.

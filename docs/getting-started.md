@@ -12,27 +12,15 @@ It does not provide a general React Web, SSR, or React Server Components entry p
 
 The core runtime does not depend on React. A `ViewModelScope` is only a React adapter: it creates or receives a `ViewModelRuntime`, owns a `ViewModelBinding`, and connects platform lifecycle events to that runtime. Application services and global dependency graphs can be created and used without any UI.
 
-## Install the current alpha
+## Installation
 
-The current alpha is consumed from the repository rather than the public npm registry. Build and pack it first:
-
-```sh
-git clone https://github.com/lwj1994/js_view_model.git
-cd js_view_model
-npm install
-npm run build
-npm pack
-```
-
-Install the generated archive in the React Native or Electron application:
+Install the published package in the React Native or Electron application:
 
 ```sh
-npm install /absolute/path/to/js_view_model/view_model-0.1.0.tgz
+npm install view_model@0.2.0
 ```
 
 The host application supplies the relevant peer dependencies: React and React Native for a React Native app, or React and Electron for an Electron renderer. Electron main can use the core entry without React.
-
-After a public npm release, the package can be installed by its package name. Check the root [README](../README.md) and current `package.json` for the authoritative release status and peer dependency ranges.
 
 ## 1. Choose the correct entry point
 
@@ -90,12 +78,14 @@ export class CounterViewModel extends StateViewModel<CounterState> {
     this.updateState((current) => ({ count: current.count + 1 }), 'counter.increment');
 }
 
-export const counterSpec = viewModelSpec(() => new CounterViewModel(), {
+export const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
   debugLabel: 'Counter',
 });
 ```
 
-Keep the Spec at module scope. A Spec is an identity token, not merely a factory wrapper. Recreating it during every React render creates a different identity every time.
+Keep the Spec at module scope. The recommended overload supplies the ViewModel class explicitly: unkeyed identity is that type within one Binding, while keyed identity is that type plus the key within one Runtime. Independently created Specs with the same explicit type and key therefore share. A stable declaration also keeps the winning builder and options deterministic and avoids allocating factory wrappers during render.
+
+The builder-only overload gives each Spec a private token. It remains available as a compatibility fallback, but separately created builder-only Specs do not share even when their textual keys match.
 
 The builder and constructor must be pure. They may initialize in-memory fields, but they must not open sockets, start timers, subscribe to native APIs, perform IPC, or resolve another ViewModel. React may run a builder during a render that is later abandoned. Resource acquisition belongs in `onCreate`.
 
@@ -151,7 +141,7 @@ class SessionViewModel extends ViewModel {
   }
 }
 
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'Session',
 });
@@ -197,7 +187,7 @@ class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   };
 }
 
-const counterSpec = viewModelSpec(() => new CounterViewModel());
+const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
 function Counter(): React.JSX.Element {
   const count = useViewModelSelector(counterSpec, (counter) => counter.state.count);
@@ -262,7 +252,7 @@ This has two practical consequences:
 1. An application-root Scope is suitable for application-lifetime modules.
 2. A screen that requires release on unmount needs an appropriate owner boundary; merely removing the last component hook from a still-mounted Scope is not enough.
 
-Nested Scopes inherit the parent Runtime by default but create a different Binding. Their unkeyed instances are isolated. Keyed instances can be shared when their Spec token and key are both equal.
+Nested Scopes inherit the parent Runtime by default but create a different Binding. Their unkeyed instances are isolated. Keyed instances share when their explicit ViewModel type and key are equal, including across independently created Specs. Builder-only Specs share only when the same private token is reused and should be treated as a compatibility fallback.
 
 ## 9. Important lifecycle limits
 

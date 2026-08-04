@@ -5,43 +5,66 @@
 Instance sharing and disposal are determined by four things:
 
 1. the `ViewModelRuntime`;
-2. the Spec token;
-3. the optional key;
+2. the explicit ViewModel type, or a compatibility token for a builder-only Spec;
+3. the effective key;
 4. the set of owner Bindings.
 
-The Runtime is the maximum sharing boundary. The Spec token and key select an identity inside that Runtime. Bindings keep the current generation alive.
+The Runtime is the maximum sharing boundary. With the recommended explicit-type API, a ViewModel identity inside one Runtime is its explicit ViewModel type plus its effective key. An explicit key is the effective key for a keyed identity; omitting it selects a Binding-private default key. Bindings keep the current generation alive.
 
-## A Spec is an identity declaration
+## Explicit ViewModel types declare identity
 
-Every new `viewModelSpec(...)` call creates a new token.
+Pass the ViewModel class as a runtime value when declaring a Spec:
 
 ```ts
-const firstSpec = viewModelSpec(() => new SessionViewModel(), {
+const firstSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary',
 });
-const secondSpec = viewModelSpec(() => new SessionViewModel(), {
+const secondSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary',
 });
 ```
 
-`firstSpec` and `secondSpec` do not share an instance. Their key strings match, but their tokens differ.
+`firstSpec` and `secondSpec` represent the same identity inside one Runtime because their explicit ViewModel type and key match. They therefore share the current generation even though they are different Spec objects.
+
+Only the builder that wins the first cache miss constructs that generation. Do not give Specs for the same type and key conflicting builders or lifetime options.
+
+The winning builder must return an instance whose prototype chain includes the explicit identity type. This also permits an abstract base ViewModel with a protected constructor to serve as the shared identity.
 
 For a keyed identity, the cache key is conceptually:
 
 ```text
-(runtime object, spec token, explicit key)
+(runtime object, explicit ViewModel type, explicit key)
 ```
 
 For an unkeyed identity, the cache key is conceptually:
 
 ```text
-(runtime object, binding object, spec token, undefined)
+(runtime object, binding object, explicit ViewModel type, binding-private default key)
 ```
 
-This is why Specs should normally be stable module-level declarations:
+TypeScript generic parameters are erased, so the explicit class argument is what preserves type identity at runtime. `debugLabel` is diagnostic metadata and never participates in identity.
+
+### Builder-only compatibility fallback
+
+The previous builder-only form remains supported:
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+const firstLegacySpec = viewModelSpec(() => new SessionViewModel(), {
+  key: 'primary',
+});
+const secondLegacySpec = viewModelSpec(() => new SessionViewModel(), {
+  key: 'primary',
+});
+```
+
+Each builder-only Spec receives an independent token. These two legacy Specs do not share, even though their builders return the same class and their keys match. This fallback preserves existing code; prefer the explicit-type form for new declarations.
+
+### Keep Specs at module scope
+
+Stable module-level Specs avoid render-time declaration allocation and keep the builder and options for an identity consistent:
+
+```ts
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary',
 });
 ```
@@ -52,24 +75,24 @@ This is incorrect:
 
 ```tsx
 function Profile(): React.JSX.Element {
-  const profile = useViewModel(viewModelSpec(() => new ProfileViewModel()));
+  const profile = useViewModel(viewModelSpec(ProfileViewModel, () => new ProfileViewModel()));
   // ...
 }
 ```
 
-Every render creates a token and therefore a different identity. The Scope Binding retains acquired entries until the Binding is disposed, so this can accumulate generations and cause lifecycle churn rather than simply rebuilding one value.
+The explicit type prevents this example from intentionally selecting a new identity, but every render still allocates a new Spec and builder. React may replay or abandon renders, and the builder from the first cache miss wins. The builder-only fallback is more dangerous here because every call also creates an independent token and identity.
 
-Define the Spec outside render. If identity depends on business data, create and retain a stable declaration for that data instead of deriving a fresh Spec on every render.
+Define the Spec outside render so construction and options stay stable. If identity depends on business data, use a stable explicit key and retain the declaration rather than deriving a fresh Spec on every render.
 
 ## Unkeyed identity
 
 ```ts
-const editorSpec = viewModelSpec(() => new EditorViewModel());
+const editorSpec = viewModelSpec(EditorViewModel, () => new EditorViewModel());
 ```
 
 An unkeyed Spec is private to a Binding:
 
-- repeated resolution from the same Binding returns the same current generation;
+- repeated resolution of the same explicit type from one Binding returns the same current generation, even through different explicit Spec objects;
 - a different Binding receives a different generation;
 - sibling components in one Scope share because they use the same Scope Binding;
 - a nested Scope receives a private generation because it creates another Binding;
@@ -80,12 +103,12 @@ Unkeyed identity is a good default for a page, window-local module, or private d
 ## Keyed identity
 
 ```ts
-const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
 });
 ```
 
-Within one Runtime, Bindings resolving the same token and key share the same generation:
+Within one Runtime, Bindings resolving the same explicit ViewModel type and key share the same generation, including when they use independently declared explicit Specs:
 
 ```ts
 const runtime = new ViewModelRuntime();
@@ -104,16 +127,16 @@ Keys may be strings, numbers, or symbols. Prefer stable business identifiers. A 
 
 ### `withKey`
 
-`withKey` creates a Spec variant while preserving the original token:
+`withKey` creates a Spec variant while preserving its explicit ViewModel type identity:
 
 ```ts
-const workerSpec = viewModelSpec(() => new WorkerViewModel());
+const workerSpec = viewModelSpec(WorkerViewModel, () => new WorkerViewModel());
 
 const primaryWorkerSpec = workerSpec.withKey('primary');
 const secondaryWorkerSpec = workerSpec.withKey('secondary');
 ```
 
-Repeated `workerSpec.withKey('primary')` calls represent the same keyed identity because both token and key match. The builder is also the same; the key is not passed as a builder argument.
+Repeated `workerSpec.withKey('primary')` calls represent the same keyed identity because both the explicit type and key match. For a builder-only compatibility Spec, `withKey` instead preserves that Spec's fallback token. The builder is also preserved; the key is not passed as a builder argument.
 
 If construction itself needs an ID, retain a stable parameterized Spec declaration for each ID. Do not create a new uncached Spec every time a consumer asks for that ID.
 
@@ -182,6 +205,8 @@ A managed parent receives its own dependency Binding. When the parent resolves a
 
 The dependency edge keeps the child alive while the parent uses it. When the parent generation ends, its dependency Binding is disposed. Zero-owner, non-permanent children then become eligible for disposal.
 
+Root ownership is source-aware: every root Binding source currently owning the parent is propagated to children that parent has resolved, and later root bind/unbind changes are mirrored to those children in real time.
+
 Do not store a resolved child indefinitely. Store its Spec and resolve through a getter so a forced child recycle can yield the current generation.
 
 ## Ordinary automatic release
@@ -215,7 +240,7 @@ The Runtime completes the old generation and its exclusive dependency tree befor
 `aliveForever` prevents ordinary zero-owner release:
 
 ```ts
-const telemetrySpec = viewModelSpec(() => new TelemetryViewModel(), {
+const telemetrySpec = viewModelSpec(TelemetryViewModel, () => new TelemetryViewModel(), {
   key: 'application-telemetry',
   aliveForever: true,
 });
@@ -246,10 +271,10 @@ You may target either a Spec or an instance:
 
 ```ts
 runtime.recycle(viewModel); // Exactly that managed generation, if owned by this Runtime.
-runtime.recycle(spec); // Every generation matching this Spec token and key.
+runtime.recycle(spec); // Every generation matching this Spec identity and effective key.
 ```
 
-This distinction is critical for unkeyed Specs. One Runtime may contain one unkeyed generation per Binding. `runtime.recycle(unkeyedSpec)` matches all of them because they share the token and the undefined key. Use `runtime.recycle(instance)` when only one private generation should be invalidated.
+This distinction is critical for unkeyed Specs. One Runtime may contain one unkeyed generation per Binding. `runtime.recycle(unkeyedSpec)` matches all generations for that Spec identity across their Binding-private effective keys. Use `runtime.recycle(instance)` when only one private generation should be invalidated.
 
 For a keyed Spec, recycle affects the shared generation used by every Scope, plain Binding, and parent dependency owner in that Runtime.
 
@@ -281,13 +306,14 @@ Pause does not prevent actions, state mutations, or direct instance subscription
 
 ## Summary table
 
-| Declaration and owner state                | Sharing                                     | Zero-owner behavior                        |
-| ------------------------------------------ | ------------------------------------------- | ------------------------------------------ |
-| Unkeyed Spec                               | One generation per Binding                  | Scheduled disposal                         |
-| Keyed Spec                                 | One generation per token + key in a Runtime | Scheduled disposal                         |
-| Keyed `aliveForever` Spec                  | One generation per token + key in a Runtime | Retained until recycle or Runtime disposal |
-| Same Spec in another Runtime               | Never shared with the first Runtime         | Managed independently                      |
-| Same textual key on a different Spec token | Not shared                                  | Managed independently                      |
+| Declaration and owner state                       | Sharing                                               | Zero-owner behavior                        |
+| ------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------ |
+| Explicit-type unkeyed Spec                        | One generation per explicit type and Binding          | Scheduled disposal                         |
+| Explicit-type keyed Spec                          | One generation per explicit type + key in a Runtime   | Scheduled disposal                         |
+| Explicit-type keyed `aliveForever` Spec           | One generation per explicit type + key in a Runtime   | Retained until recycle or Runtime disposal |
+| Separate explicit Specs with the same type + key  | Shared within one Runtime                             | Follows the shared generation              |
+| Builder-only Specs with different fallback tokens | Not shared, even when their textual keys are the same | Managed independently                      |
+| The same identity in another Runtime              | Never shared with the first Runtime                   | Managed independently                      |
 
 ## Related guides
 

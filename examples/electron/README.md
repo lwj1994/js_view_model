@@ -10,7 +10,7 @@ and the main process:
 - preload exposes a narrow IPC bridge;
 - processes exchange serializable DTOs, never ViewModel objects.
 
-> This example requires the v0.1 Alpha `view_model` API. Electron renderer
+> This example requires the current `view_model` API. Electron renderer
 > support does not imply React Web support.
 
 The filenames below label illustrative snippets. This directory does not

@@ -36,6 +36,110 @@ class LifecycleViewModel extends ViewModel {
 }
 
 describe('ViewModel 身份与引用生命周期', () => {
+  it('显式 type + key 是跨 Spec、跨 binding 的共享身份', () => {
+    const runtime = new ViewModelRuntime();
+    const first = runtime.createBinding();
+    const second = runtime.createBinding();
+    const firstBuilder = vi.fn(() => new LifecycleViewModel());
+    const secondBuilder = vi.fn(() => new LifecycleViewModel());
+    const firstSpec = viewModelSpec(LifecycleViewModel, firstBuilder, { key: 'shared' });
+    const secondSpec = viewModelSpec(LifecycleViewModel, secondBuilder, { key: 'shared' });
+
+    const viewModel = first.read(firstSpec);
+    expect(second.read(secondSpec)).toBe(viewModel);
+    expect(firstBuilder).toHaveBeenCalledOnce();
+    expect(secondBuilder).not.toHaveBeenCalled();
+    expect(firstSpec.type).toBe(LifecycleViewModel);
+    expect(secondSpec.token).toBe(firstSpec.token);
+
+    runtime.dispose();
+  });
+
+  it('显式 type 的 unkeyed Spec 在同一 binding 共享、跨 binding 私有', () => {
+    const runtime = new ViewModelRuntime();
+    const first = runtime.createBinding();
+    const second = runtime.createBinding();
+    const firstSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel());
+    const secondSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel());
+
+    expect(first.read(secondSpec)).toBe(first.read(firstSpec));
+    expect(second.read(secondSpec)).not.toBe(first.read(firstSpec));
+
+    runtime.dispose();
+  });
+
+  it('显式 type 的不同 key 不共享', () => {
+    const runtime = new ViewModelRuntime();
+    const binding = runtime.createBinding();
+    const firstSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel(), {
+      key: 'first',
+    });
+    const secondSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel(), {
+      key: 'second',
+    });
+
+    expect(binding.read(secondSpec)).not.toBe(binding.read(firstSpec));
+
+    runtime.dispose();
+  });
+
+  it('显式 type 拒绝结构兼容但不是该 type 的 builder 结果', () => {
+    class DeclaredViewModel extends ViewModel {}
+    class WrongViewModel extends ViewModel {}
+
+    const runtime = new ViewModelRuntime();
+    const binding = runtime.createBinding();
+    const spec = viewModelSpec(DeclaredViewModel, () => new WrongViewModel());
+
+    expect(() => binding.read(spec)).toThrow(ViewModelSpecError);
+    expect(runtime.recycle(spec)).toBe(0);
+
+    runtime.dispose();
+  });
+
+  it('显式 type 支持 protected constructor 的抽象基类身份', () => {
+    abstract class AbstractViewModel extends ViewModel {
+      protected constructor() {
+        super();
+      }
+    }
+
+    class ConcreteViewModel extends AbstractViewModel {
+      public constructor() {
+        super();
+      }
+    }
+
+    const runtime = new ViewModelRuntime();
+    const binding = runtime.createBinding();
+    const spec = viewModelSpec(AbstractViewModel, () => new ConcreteViewModel());
+
+    expect(binding.read(spec)).toBeInstanceOf(ConcreteViewModel);
+
+    runtime.dispose();
+  });
+
+  it('旧 builder-only Spec 即使 key 相同也保持独立身份', () => {
+    const runtime = new ViewModelRuntime();
+    const binding = runtime.createBinding();
+    const firstSpec = viewModelSpec(() => new LifecycleViewModel(), { key: 'shared' });
+    const secondSpec = viewModelSpec(() => new LifecycleViewModel(), { key: 'shared' });
+
+    expect(binding.read(secondSpec)).not.toBe(binding.read(firstSpec));
+    expect(secondSpec.token).not.toBe(firstSpec.token);
+    expect(firstSpec.type).toBeUndefined();
+
+    runtime.dispose();
+  });
+
+  it('withKey 保留显式 type 身份', () => {
+    const baseSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel());
+    const keyedSpec = baseSpec.withKey('shared');
+
+    expect(keyedSpec.type).toBe(LifecycleViewModel);
+    expect(keyedSpec.token).toBe(baseSpec.token);
+  });
+
   it('unkeyed 在同一 binding 内稳定、跨 binding 私有', () => {
     const runtime = new ViewModelRuntime();
     const first = runtime.createBinding();
@@ -135,6 +239,9 @@ describe('ViewModel 身份与引用生命周期', () => {
     expect(() => viewModelSpec(() => new LifecycleViewModel(), { aliveForever: true })).toThrow(
       ViewModelSpecError,
     );
+    expect(() =>
+      viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel(), { aliveForever: true }),
+    ).toThrow(ViewModelSpecError);
 
     const runtime = new ViewModelRuntime();
     const binding = runtime.createBinding();
@@ -164,6 +271,31 @@ describe('ViewModel 身份与引用生命周期', () => {
     expect(runtime.recycle(baseSpec)).toBe(1);
     expect(unkeyed.isDisposed).toBe(true);
     expect(keyed.isDisposed).toBe(false);
+
+    runtime.dispose();
+  });
+
+  it('recycle 使用与 Map 缓存一致的 SameValueZero key 语义', () => {
+    const runtime = new ViewModelRuntime();
+    const binding = runtime.createBinding();
+    const nanSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel(), { key: NaN });
+    const nanViewModel = binding.read(nanSpec);
+
+    expect(binding.read(nanSpec)).toBe(nanViewModel);
+    expect(runtime.recycle(nanSpec)).toBe(1);
+    expect(nanViewModel.isDisposed).toBe(true);
+
+    const negativeZeroSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel(), {
+      key: -0,
+    });
+    const positiveZeroSpec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel(), {
+      key: 0,
+    });
+    const zeroViewModel = binding.read(negativeZeroSpec);
+
+    expect(binding.read(positiveZeroSpec)).toBe(zeroViewModel);
+    expect(runtime.recycle(positiveZeroSpec)).toBe(1);
+    expect(zeroViewModel.isDisposed).toBe(true);
 
     runtime.dispose();
   });

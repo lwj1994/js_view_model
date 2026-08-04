@@ -12,27 +12,15 @@
 
 核心 Runtime 不依赖 React。`ViewModelScope` 只是 React adapter：它创建或接收 `ViewModelRuntime`，持有一个 `ViewModelBinding`，并把平台生命周期事件连接到该 Runtime。即使完全没有 UI，也可以创建和使用应用 service 与全局依赖图。
 
-## 安装当前 Alpha 版本
+## 安装
 
-当前 Alpha 版本从源码仓库使用，尚不通过公共 npm registry 分发。请先构建并打包：
-
-```sh
-git clone https://github.com/lwj1994/js_view_model.git
-cd js_view_model
-npm install
-npm run build
-npm pack
-```
-
-然后在 React Native 或 Electron 应用中安装生成的归档：
+在 React Native 或 Electron 应用中安装已发布的正式包：
 
 ```sh
-npm install /absolute/path/to/js_view_model/view_model-0.1.0.tgz
+npm install view_model@0.2.0
 ```
 
 相关 peer dependency 由宿主应用提供：React Native 应用提供 React 与 React Native；Electron renderer 提供 React 与 Electron。Electron main 可以在不依赖 React 的情况下使用 core 入口。
-
-公共 npm 版本发布后，即可通过包名安装。请以根目录的[中文 README](../../README_ZH.md) 与当前 `package.json` 为准，确认正式发布状态和 peer dependency 范围。
 
 ## 1. 选择正确入口
 
@@ -90,12 +78,14 @@ export class CounterViewModel extends StateViewModel<CounterState> {
     this.updateState((current) => ({ count: current.count + 1 }), 'counter.increment');
 }
 
-export const counterSpec = viewModelSpec(() => new CounterViewModel(), {
+export const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
   debugLabel: 'Counter',
 });
 ```
 
-Spec 应保存在模块作用域。Spec 是 identity token，不只是 factory wrapper。每次 React render 都重新创建 Spec，会在每次 render 中产生不同身份。
+Spec 应保存在模块作用域。推荐 overload 显式传入 ViewModel class：unkeyed identity 是同一 Binding 内的 type，keyed identity 是同一 Runtime 内的 type + key。因此，显式 type 与 key 相同的独立 Spec 会共享。稳定声明还能让最终生效的 builder 与 options 保持确定，并避免在 render 中反复分配 factory wrapper。
+
+builder-only overload 会为每个 Spec 分配私有 token。它仅作为兼容 fallback 保留；即使文本 key 相同，分别创建的 builder-only Spec 也不会共享。
 
 builder 与 constructor 必须保持纯净。它们可以初始化内存字段，但不能打开 socket、启动 timer、订阅原生 API、执行 IPC 或解析另一个 ViewModel。React 可能在一次最终被放弃的 render 中运行 builder。资源获取属于 `onCreate`。
 
@@ -151,7 +141,7 @@ class SessionViewModel extends ViewModel {
   }
 }
 
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'Session',
 });
@@ -197,7 +187,7 @@ class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   };
 }
 
-const counterSpec = viewModelSpec(() => new CounterViewModel());
+const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
 function Counter(): React.JSX.Element {
   const count = useViewModelSelector(counterSpec, (counter) => counter.state.count);
@@ -262,7 +252,7 @@ const count = useViewModelSelector(counterSpec, (counter) => counter.state.count
 1. 应用根 Scope 适合应用生命周期模块。
 2. 需要在卸载时释放的 screen 必须拥有合适的 owner 边界；仅从仍挂载的 Scope 中移除最后一个组件 hook 并不够。
 
-嵌套 Scope 默认继承 parent Runtime，但会创建不同的 Binding。它们的 unkeyed 实例互相隔离。只有 Spec token 与 key 同时相等时，keyed 实例才能共享。
+嵌套 Scope 默认继承 parent Runtime，但会创建不同的 Binding。它们的 unkeyed 实例互相隔离。显式 ViewModel type 与 key 相同时，keyed 实例可以跨独立 Spec 共享。builder-only Spec 只有复用同一个私有 token 时才共享，应只把它视为兼容 fallback。
 
 ## 9. 重要生命周期限制
 

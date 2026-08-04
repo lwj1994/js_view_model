@@ -3,7 +3,9 @@
 ## Core test pattern
 
 Create a fresh Runtime and Binding for each test. Dispose both even when the
-assertion fails. Test through stable Specs and public `read/watch` APIs.
+assertion fails. Prefer stable explicit-type Specs such as
+`viewModelSpec(TestViewModel, () => new TestViewModel())` and test through public
+Binding APIs.
 
 Automatic disposal after the final Binding owner leaves is queued in a
 microtask. Flush at least the required microtasks before asserting
@@ -12,15 +14,39 @@ final disposal.
 
 Test these semantics when relevant:
 
-- unkeyed private identity and keyed cross-Binding sharing;
+- explicit-type unkeyed Binding-private identity;
+- keyed sharing across Bindings and across independently declared explicit
+  Specs with the same type + key;
+- builder-only compatibility Specs retaining independent fallback tokens;
 - `aliveForever` retention and Runtime shutdown;
 - `read` versus `watch` propagation;
 - state equality and `{ previous, current }` diffs;
-- parent-child lifetime and dependency notification;
+- parent-child lifetime, dependency notification, and existing/later root owner
+  source propagation through multiple levels;
+- direct and multiple-parent source reference counting so bind/unbind callbacks
+  run only on logical first/last source transitions;
 - cycle rejection and construction rollback;
+- whole-cascade synchronous transaction deduplication per Binding/callback pair,
+  diamond parent deduplication, and a fresh transaction after an async boundary;
+- cached/tag required, optional, and batch lookup behavior without accidental
+  construction, plus read/watch ownership and notification differences;
+- Binding-owned `listen`, `listenState`, and `listenStateSelect` early disposal,
+  selection equality, Binding cleanup, and generation recycle cleanup;
 - multiple pause tokens and coalesced owner updates;
 - forceful recycle and getter-based generation recovery;
 - resource cleanup and idempotent disposal.
+
+For cached lookup tests, create the target through an ordinary Spec path first.
+Assert that a miss does not call the builder: required forms throw,
+`maybeReadCached`/`maybeWatchCached` return `undefined`, and tag-batch forms
+return an empty array. Keep cached APIs classified as advanced lookup rather
+than replacing normal Spec-based dependency resolution.
+
+For notification transaction tests, trigger the cascade through public
+`notifyListeners` or state updates where possible. The same callback associated
+with two distinct Bindings should run once for each Binding, while repeated
+delivery for the same Binding/callback pair should run once in that synchronous
+transaction.
 
 ## React tests
 

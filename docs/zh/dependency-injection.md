@@ -13,7 +13,7 @@
 Spec 是关于如何构造及识别 ViewModel 的稳定声明。应用模块导出 Spec，让 consumer 依赖声明，而不是手动构造受管理实例。
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'Session',
 });
@@ -59,10 +59,10 @@ class SyncViewModel extends ViewModel {
   }
 }
 
-const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
 });
-const syncSpec = viewModelSpec(() => new SyncViewModel(sessionSpec), {
+const syncSpec = viewModelSpec(SyncViewModel, () => new SyncViewModel(sessionSpec), {
   key: 'application-sync',
 });
 
@@ -123,6 +123,7 @@ Runtime 已经按照 Spec identity 缓存当前结果，因此不需要应用层
 - 解析或创建 child；
 - 让 dependency Binding 成为 owner；
 - 添加 parent 到 child 的生命周期边；
+- 把 parent 当前的 external root Binding source 镜像给 child；
 - 在边被 release 前保活 child；
 - 参与依赖环检测；
 - 允许强制 child disposal 使 parent 的 dependency entry 失效。
@@ -170,6 +171,54 @@ class NetworkCoordinator extends ViewModel {
 
 不要在 `onDependencyNotify` 中只为转发同一个 child event 而调用 `notifyListeners`。Runtime 已经负责该传播。如果 callback 还通过 `setState` commit parent state，该 state commit 会发出自己的通知。
 
+## Binding 托管的 side-effect listener
+
+依赖需要执行 side effect、但不应 broad notify parent 时，使用 Binding listener method：
+
+```ts
+protected override onCreate(): void {
+  this.viewModelBinding.listenStateSelect(
+    connectivitySpec,
+    (state) => state.online,
+    ({ current, previous }) => {
+      this.reconcileConnectivity(previous, current);
+    },
+  );
+}
+```
+
+- `listen(spec, callback)` 观察普通 ViewModel 通知。
+- `listenState(spec, callback)` 接收完整的 `StateViewModel` state change。
+- `listenStateSelect(spec, selector, callback, equals?)` 接收 selected state change；equality 默认使用 `Object.is`。
+
+这些 method 通过传入的 Spec 解析并 bind，因此会建立 parent-to-child lifetime edge，但不会启用 broad `watch` 冒泡。每个 method 都返回 disposer，可用于提前移除 listener；该 disposer 不会释放 Binding 对 generation 的 ownership。Binding 或 child generation handle dispose/recycle 时，也会自动移除 listener。
+
+应在 `onCreate` 等 owner lifecycle 中只注册一次 listener。不要把 `listen` 放进反复求值的 dependency getter，因为每次求值都会再注册一个 side effect。直接使用 `viewModel.subscribe` 与 `subscribeState` 仍属于底层 subscription，需要手动管理 cleanup。
+
+## 高级 cached lookup
+
+普通 DI 应保留 Spec，并调用 `read(spec)` 或 `watch(spec)`。这样 declaration 可以在需要时创建 generation，construction order 也保持明确。
+
+cached method 是 lookup-only 逃生口，只用于查询已经由其他路径创建的 generation：
+
+```ts
+const existing = binding.readCached(SessionViewModel, {
+  key: 'primary-session',
+});
+
+const optional = binding.maybeReadCached(sessionSpec, {
+  key: 'primary-session',
+});
+
+const sessions = binding.watchCachesByTag(SessionViewModel, 'active-sessions');
+```
+
+cache target 可以是显式 ViewModel class 或 Spec。`ViewModelSpecOptions.tag` 提供分组 label，不参与 identity。单值 method 接受 `{ key?, tag? }`；精确 key 优先，key 未命中时可回退到匹配 tag。`maybeReadCached`/`maybeWatchCached` 未命中时返回 `undefined`，required `readCached`/`watchCached` 则抛错。`readCachesByTag`/`watchCachesByTag` 返回所有匹配项，未命中时返回空数组。
+
+cached method 都不会运行 builder，也不会创建缺失 generation。但命中后，Binding 会 acquire 现有 generation、镜像 parent root source，并建立与 Spec-based resolution 相同的 parent lifetime edge。`readCached` 与 `readCachesByTag` 不冒泡普通通知；`watchCached` 与 `watchCachesByTag` 会冒泡。
+
+cached lookup 会把调用方耦合到 cache identity、creation order、miss handling，以及可能出现的多个 tag match。只应把它用于有意的 cross-owner 查询，不要作为默认依赖解析方式。
+
 ## 何时可以使用依赖 getter
 
 只有 parent 完成 attach 与 acquire 后，才能使用依赖 getter。安全调用位置包括：
@@ -205,7 +254,7 @@ UI 所需数据应由 parent 自己公开。让 commit 后的 action 或依赖�
 unkeyed identity 按 Binding 缓存。Scope Binding 与每个 parent dependency Binding 都是不同 owner。
 
 ```ts
-const localCacheSpec = viewModelSpec(() => new LocalCacheViewModel());
+const localCacheSpec = viewModelSpec(LocalCacheViewModel, () => new LocalCacheViewModel());
 ```
 
 如果两个 parent generation 分别解析 `localCacheSpec`，它们会得到不同 child，因为每个 parent 都有不同 dependency Binding。这适合私有子图。
@@ -213,12 +262,12 @@ const localCacheSpec = viewModelSpec(() => new LocalCacheViewModel());
 同一个 Runtime 中多个 parent 或 Scope 必须共享 child 时，使用 keyed Spec：
 
 ```ts
-const sharedCacheSpec = viewModelSpec(() => new SharedCacheViewModel(), {
+const sharedCacheSpec = viewModelSpec(SharedCacheViewModel, () => new SharedCacheViewModel(), {
   key: 'application-cache',
 });
 ```
 
-只有 key 并不够。Spec token 与 key 共同组成 identity。两个独立创建、key 相同的 Spec 不会共享。
+显式 ViewModel class 与 key 共同组成 keyed identity。显式 class 与 key 相同的独立 Spec 会在同一 Runtime 中共享。builder-only 兼容 overload 则会为每个独立创建的 base Spec 分配唯一 fallback token。
 
 ## 把 React owner 接入应用容器
 
@@ -232,7 +281,7 @@ const sharedCacheSpec = viewModelSpec(() => new SharedCacheViewModel(), {
 
 Scope 会创建自己的 Binding。因此：
 
-- token 与 key 匹配时，它会与 plain application Binding 共享 keyed application Spec；
+- 显式 class identity 与 key 匹配时，它会与 plain application Binding 共享 keyed application Spec；
 - 对 unkeyed Spec，它会得到私有实例；
 - dispose Scope 只会 release Scope Binding；
 - 创建 `applicationRuntime` 的代码仍负责 dispose 它。

@@ -2,7 +2,7 @@
 
 [English](../concepts.md) · [文档索引](./README.md)
 
-> 本指南描述当前 v0.1 alpha 的行为。`view_model` 面向 React Native 与 Electron 应用设计，不提供通用 React Web 入口。
+> 本指南描述 `view_model` 在 React Native 与 Electron 应用中的正式支持行为；本包不提供通用 React Web 入口。
 
 `view_model` 将应用级依赖注入、状态传播与自动生命周期管理组合在一起。应用对象图存在于 `ViewModelRuntime` 中。React `ViewModelScope` 只是 owner adapter：它通过 `ViewModelBinding` 将一棵 React 子树连接到 Runtime；Scope 本身并不是 DI 容器。
 
@@ -23,7 +23,7 @@ Application composition root
 
 Runtime 是下列能力的最大边界：
 
-- keyed 实例共享；
+- 显式 type + key 实例共享；
 - 受管理的依赖图；
 - generation 编号；
 - 强制 recycle；
@@ -39,18 +39,20 @@ Runtime 是下列能力的最大边界：
 | `ViewModelRuntime` | 持有受管理实例、keyed cache、依赖边、pause 状态、recycle 与最终清理。                                         |
 | `ViewModelScope`   | 将 React 子树适配到 Runtime。它创建一个稳定 Binding，并提供给 hooks。                                         |
 | `ViewModelBinding` | 表示一个 owner。`read` 与 `watch` acquire 实例；`dispose` 释放该 Binding acquire 的所有内容。                 |
-| `ViewModelSpec<T>` | 声明纯 builder，以及一个 ViewModel family 的 identity 策略。                                                  |
+| `ViewModelSpec<T>` | 声明显式 ViewModel type、纯 builder 以及 identity/lifetime options。                                          |
 | generation         | 针对某个 Spec identity 创建的一个具体受管理对象。Recycle 会结束 generation；后续解析会创建另一个 generation。 |
 
 未注入 Runtime 且没有 parent 的 root Scope 会创建并最终销毁自己的 Runtime。nested Scope 默认复用 parent Runtime，但始终创建不同的 Binding。显式注入的 Runtime 由调用方持有，而不是 Scope。
 
-这个区别直接影响应用级 DI。长期存在的 application Binding 可以在自己的生命周期内拥有一棵 unkeyed 对象图；若要让同一个 service 跨独立的 plain/Scope/parent Binding 共享，还必须使用同一个 Runtime，并为稳定 Spec 提供显式 key。React 嵌套本身不会让 ViewModel 变成全局实例。
+这个区别直接影响应用级 DI。长期存在的 application Binding 可以在自己的生命周期内拥有一棵 unkeyed 对象图；若要让同一个 service 跨独立的 plain/Scope/parent Binding 共享，还必须使用同一个 Runtime、相同的显式 ViewModel type 与显式 key。React 嵌套本身不会让 ViewModel 变成全局实例。
 
-## 稳定 Spec 是 identity token
+## 显式 type 定义 identity，稳定 Spec 定义 construction
 
-Spec 不只是 factory 包装。每个 `ViewModelSpec` 都拥有唯一的 runtime `token`，identity 以该 token 为基础。
+把 ViewModel class 作为显式 runtime identity value。推荐声明形式是 `viewModelSpec(MyViewModel, () => new MyViewModel(), options)`。
 
-应在模块顶层声明一次 Spec：
+builder 结果必须是该显式 type 或其子类的实例。带 protected constructor 的抽象基类也可以作为 identity value。
+
+应在模块顶层声明一次 Spec，让 builder 与 options 保持稳定：
 
 ```ts
 import { ViewModel, viewModelSpec } from 'view_model/core';
@@ -59,7 +61,7 @@ class CartViewModel extends ViewModel {
   // ...
 }
 
-export const cartSpec = viewModelSpec(() => new CartViewModel(), {
+export const cartSpec = viewModelSpec(CartViewModel, () => new CartViewModel(), {
   debugLabel: 'CartViewModel',
 });
 ```
@@ -68,22 +70,25 @@ export const cartSpec = viewModelSpec(() => new CartViewModel(), {
 
 ```tsx
 function CartScreen() {
-  // Wrong: every render creates a new token and therefore a new identity.
-  const cart = useViewModel(viewModelSpec(() => new CartViewModel()));
+  // Wrong: this allocates a new Spec and builder during every render.
+  const cart = useViewModel(viewModelSpec(CartViewModel, () => new CartViewModel()));
   return <CartView cart={cart} />;
 }
 ```
 
-解析后的 TypeScript 泛型类型会在运行时被擦除。因此，两个独立构造的 Spec 不会因为使用了相同 ViewModel class、builder、`debugLabel` 与 key 就共享实例。
+显式 class 参数能跨过 TypeScript 泛型擦除保留 identity。在同一个 Runtime 内，相同 ViewModel type 与 key 的独立显式 Spec 会共享同一 generation。首个命中 cache miss 的 builder 负责构造它，所以即使 identity 相同，重复声明相互分歧的 builder 或 options 也不安全。
 
 identity 规则是确定的：
 
 ```text
-unkeyed identity = one Spec token inside one Binding
-keyed identity   = one Spec token + key inside one Runtime
+explicit identity = ViewModel type + effective key inside one Runtime
+unkeyed            = effective key is private to one Binding
+keyed              = effective key is the explicit key
 ```
 
-`debugLabel` 只是诊断元数据，从不参与 identity。`withKey(key)` 会创建另一个保留原 token 的 Spec，适合让同一个 Spec family 派生 keyed variant。
+builder-only 形式 `viewModelSpec(() => new MyViewModel(), options)` 作为兼容 fallback 仍然保留。每个 builder-only Spec 都有独立 token，因此即使 builder 返回相同 class 且 key 相同，不同 builder-only Spec 也不会共享。
+
+`debugLabel` 只是诊断元数据，从不参与 identity。`withKey(key)` 会保留显式 Spec 的 ViewModel type identity；对 builder-only Spec 则保留该 Spec 的 fallback token。
 
 ## Unkeyed、keyed 与 aliveForever
 
@@ -91,7 +96,7 @@ keyed identity   = one Spec token + key inside one Runtime
 
 unkeyed Spec 对解析它的 Binding 私有：
 
-- 在同一 Binding 中重复解析同一个稳定 Spec，会返回同一 generation；
+- 在同一 Binding 中重复解析同一显式 ViewModel type，会返回同一 generation，包括通过不同显式 Spec 解析；
 - 两个 Scope Binding 会解析出相互隔离的 generation；
 - parent ViewModel 的 dependency Binding 拥有自己的 unkeyed generation；
 - 最后一个 owner Binding 释放后，unkeyed generation 通常会被销毁。
@@ -103,7 +108,7 @@ unkeyed Spec 对解析它的 Binding 私有：
 显式 key 让实例能够在同一 Runtime 的多个 Binding 之间共享：
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
   debugLabel: 'SessionViewModel',
 });
@@ -118,7 +123,7 @@ Keyed 不等于永久存活。除非启用 `aliveForever`，最后一个 owner �
 `aliveForever` 会阻止普通的零 owner 清理，但不会让实例脱离 Runtime 独立存在：
 
 ```ts
-export const telemetrySpec = viewModelSpec(() => new TelemetryViewModel(), {
+export const telemetrySpec = viewModelSpec(TelemetryViewModel, () => new TelemetryViewModel(), {
   key: 'application-telemetry',
   aliveForever: true,
   debugLabel: 'TelemetryViewModel',
@@ -190,7 +195,7 @@ React hooks 在 commit 时订阅，但真正的 owner 是 Scope Binding。单个
 任何 feature、repository、coordinator、state holder 或 platform capability 都可以建模为 ViewModel。parent module 通过其 generation-owned `viewModelBinding` 解析 child module：
 
 ```ts
-const authSpec = viewModelSpec(() => new AuthViewModel(), {
+const authSpec = viewModelSpec(AuthViewModel, () => new AuthViewModel(), {
   key: 'application-auth',
 });
 
@@ -219,6 +224,8 @@ getter 声明本身是惰性的，不会创建任何东西。在 attach 后首�
 
 unkeyed child 对该 parent generation 的 dependency Binding 私有。keyed child 也可以同时由其他 parent、Scope 或 plain Binding 持有，因此能够比某一个 parent 活得更久。
 
+root ownership 按 source 传播。当前拥有 parent 的每个 root Binding source 都会传递给该 parent 已解析的 child，后续 root bind/unbind 也会实时同步到这些 child。
+
 使用 `read` 进行命令式 child 调用。只有 child 通知必须通过 `onDependencyNotify(child)` 冒泡并继续通知 parent 时，才使用 `watch`。同步传播会按 transaction 去重。
 
 ## 依赖访问只能发生在 commit 后
@@ -240,7 +247,7 @@ React render 可能被重放或放弃。UI 代码应选择 parent 已经暴露�
 
 ## 依赖图必须无环
 
-Runtime 会拒绝直接与间接 owner cycle。unkeyed recursion 也会通过活跃 ancestor token lineage 检测。
+Runtime 会拒绝直接与间接 owner cycle。unkeyed recursion 也会通过活跃 ancestor identity lineage 检测。
 
 当两个模块看似互相依赖时，优先采用以下设计之一：
 
@@ -256,7 +263,7 @@ generation 的对象 identity 不会原位改变。本库没有 in-place replace
 
 若某个操作可能 recycle ViewModel，不要让外部长期字段一直保存该 ViewModel 引用。需要 fresh generation 时，应通过当前 Binding 与稳定 Spec 重新解析。
 
-`runtime.recycle(viewModel)` 命中一个具体 generation。`runtime.recycle(spec)` 命中该 Runtime 中所有匹配 identity。对于 unkeyed Spec，由于不同 Binding 都有自己的私有 entry，可能同时命中多个 generation。
+`runtime.recycle(viewModel)` 命中一个具体 generation。`runtime.recycle(spec)` 命中该 Runtime 中所有匹配 identity。对于 unkeyed Spec，由于 effective key 属于 Binding 私有，可能同时命中每个 Binding 的一个 generation。
 
 Recycle 会忽略当前 owners 与 `aliveForever`。它适合 logout、disconnect 等有意的应用全局失效。若需要独立 replacement，使用新的业务 key 比强制 recycle 共享 generation 更安全。
 
@@ -264,7 +271,7 @@ Recycle 会忽略当前 owners 与 `aliveForever`。它适合 logout、disconnec
 
 - 将应用 DI 图放入所有权明确的 Runtime。
 - 将 Scope 视为 React Binding adapter，而不是 service container。
-- Spec 只声明一次，并保持其 token 稳定。
+- 优先使用显式 type Spec，并只声明一次，让 builder 与 options 保持稳定。
 - 默认使用 unkeyed owner-local module；需要 Runtime 范围共享时才提供显式 key。
 - 使用 `watch` 表达 reactive ownership，使用 `read` 表达 imperative ownership。
 - builder 与 constructor 保持纯净；在 `onCreate` 启动资源，并通过 `addDispose` 注册清理。

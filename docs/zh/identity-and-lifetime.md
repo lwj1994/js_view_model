@@ -5,43 +5,66 @@
 实例共享与 disposal 由四项因素决定：
 
 1. `ViewModelRuntime`；
-2. Spec token；
-3. 可选 key；
+2. 显式 ViewModel type，或 builder-only Spec 的兼容 token；
+3. effective key；
 4. owner Binding 集合。
 
-Runtime 是最大的共享边界。Spec token 与 key 在该 Runtime 内选定 identity。Binding 负责保活当前 generation。
+Runtime 是最大的共享边界。使用推荐的显式 type API 时，一个 Runtime 内的 ViewModel identity 由显式 ViewModel type 与 effective key 共同确定。传入 key 时，它就是 effective key；省略 key 时，则使用 Binding 私有的默认 key。Binding 负责保活当前 generation。
 
-## Spec 是 identity 声明
+## 显式 ViewModel type 声明 identity
 
-每次新调用 `viewModelSpec(...)` 都会创建新 token。
+声明 Spec 时，把 ViewModel class 作为 runtime value 显式传入：
 
 ```ts
-const firstSpec = viewModelSpec(() => new SessionViewModel(), {
+const firstSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary',
 });
-const secondSpec = viewModelSpec(() => new SessionViewModel(), {
+const secondSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary',
 });
 ```
 
-`firstSpec` 与 `secondSpec` 不共享实例。它们的 key string 相同，但 token 不同。
+`firstSpec` 与 `secondSpec` 虽然是不同 Spec object，但显式 ViewModel type 与 key 相同，因此在同一个 Runtime 内表示同一 identity，并共享当前 generation。
+
+只有首次 cache miss 时胜出的 builder 会构造该 generation。不要为相同 type 与 key 的 Spec 配置相互冲突的 builder 或生命周期选项。
+
+胜出的 builder 必须返回原型链中包含该显式 identity type 的实例；因此，带 protected constructor 的抽象 ViewModel 基类也可以作为共享 identity。
 
 对于 keyed identity，cache key 在概念上是：
 
 ```text
-(runtime object, spec token, explicit key)
+(runtime object, explicit ViewModel type, explicit key)
 ```
 
 对于 unkeyed identity，cache key 在概念上是：
 
 ```text
-(runtime object, binding object, spec token, undefined)
+(runtime object, binding object, explicit ViewModel type, binding-private default key)
 ```
 
-因此，Spec 通常应该是稳定的模块级声明：
+TypeScript 泛型参数会在运行时被擦除，因此显式 class 参数负责保留 runtime type identity。`debugLabel` 只是诊断元数据，从不参与 identity。
+
+### Builder-only 兼容 fallback
+
+旧 builder-only 写法仍然保留：
 
 ```ts
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+const firstLegacySpec = viewModelSpec(() => new SessionViewModel(), {
+  key: 'primary',
+});
+const secondLegacySpec = viewModelSpec(() => new SessionViewModel(), {
+  key: 'primary',
+});
+```
+
+每个 builder-only Spec 都会获得独立 token。即使 builder 返回相同 class 且 key 相同，这两个 legacy Spec 也不会共享。该 fallback 用于兼容现有代码；新声明应优先使用显式 type 写法。
+
+### 在模块作用域保持 Spec 稳定
+
+稳定的模块级 Spec 能避免 render 期间重复分配声明，并确保同一 identity 的 builder 与 options 一致：
+
+```ts
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary',
 });
 ```
@@ -52,24 +75,24 @@ export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
 
 ```tsx
 function Profile(): React.JSX.Element {
-  const profile = useViewModel(viewModelSpec(() => new ProfileViewModel()));
+  const profile = useViewModel(viewModelSpec(ProfileViewModel, () => new ProfileViewModel()));
   // ...
 }
 ```
 
-每次 render 都创建一个 token，因此也创建了不同 identity。Scope Binding 会保留已 acquire 的 entry，直到 Binding 被 dispose；所以这种写法会累积 generation 并引发生命周期抖动，而不是简单重建一个值。
+显式 type 不会让这个例子刻意选中新的 identity，但每次 render 仍会分配新的 Spec 与 builder。React 可能重放或放弃 render，而且首次 cache miss 的 builder 会胜出。builder-only fallback 在这里更危险，因为每次调用还会创建独立 token 与 identity。
 
-应在 render 外定义 Spec。如果 identity 依赖业务数据，应为该数据创建并保留稳定声明，不要在每次 render 中派生新 Spec。
+应在 render 外定义 Spec，让 construction 与 options 保持稳定。如果 identity 依赖业务数据，应使用稳定的显式 key 并保留声明，不要在每次 render 中派生新 Spec。
 
 ## Unkeyed identity
 
 ```ts
-const editorSpec = viewModelSpec(() => new EditorViewModel());
+const editorSpec = viewModelSpec(EditorViewModel, () => new EditorViewModel());
 ```
 
 unkeyed Spec 对 Binding 私有：
 
-- 从同一个 Binding 重复解析会返回同一个当前 generation；
+- 从同一个 Binding 重复解析相同显式 type 会返回同一个当前 generation，即使通过不同的显式 Spec object；
 - 不同 Binding 会得到不同 generation；
 - 同一个 Scope 中的 sibling component 使用同一个 Scope Binding，因此会共享；
 - 嵌套 Scope 创建另一个 Binding，因此会得到私有 generation；
@@ -80,12 +103,12 @@ unkeyed Spec 对 Binding 私有：
 ## Keyed identity
 
 ```ts
-const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'primary-session',
 });
 ```
 
-同一个 Runtime 内，解析相同 token 与 key 的 Binding 共享同一个 generation：
+同一个 Runtime 内，解析相同显式 ViewModel type 与 key 的 Binding 共享同一个 generation，即使它们使用各自独立声明的显式 Spec：
 
 ```ts
 const runtime = new ViewModelRuntime();
@@ -104,16 +127,16 @@ key 可以是 string、number 或 symbol。优先使用稳定且具有业务含�
 
 ### `withKey`
 
-`withKey` 在保留原 token 的同时创建 Spec variant：
+`withKey` 在保留显式 ViewModel type identity 的同时创建 Spec variant：
 
 ```ts
-const workerSpec = viewModelSpec(() => new WorkerViewModel());
+const workerSpec = viewModelSpec(WorkerViewModel, () => new WorkerViewModel());
 
 const primaryWorkerSpec = workerSpec.withKey('primary');
 const secondaryWorkerSpec = workerSpec.withKey('secondary');
 ```
 
-重复调用 `workerSpec.withKey('primary')` 表示同一个 keyed identity，因为 token 与 key 都相同。builder 也相同；key 不会作为 builder argument 传入。
+重复调用 `workerSpec.withKey('primary')` 表示同一个 keyed identity，因为显式 type 与 key 都相同。对于 builder-only 兼容 Spec，`withKey` 则保留该 Spec 的 fallback token。builder 也会保留；key 不会作为 builder argument 传入。
 
 如果 construction 本身需要 ID，应为每个 ID 保留稳定的参数化 Spec 声明。不要在 consumer 每次请求该 ID 时都创建一个未缓存的新 Spec。
 
@@ -182,6 +205,8 @@ owner 会一直存在，直到发生以下事件之一：
 
 parent 使用 child 期间，依赖边负责保活 child。parent generation 结束时，其 dependency Binding 会被 dispose。没有 owner 且非永久存活的 child 随后可以 disposal。
 
+root ownership 会按 source 传播：当前拥有 parent 的每个 root Binding source 都会传递给该 parent 已解析的 child，后续 root bind/unbind 也会实时同步到这些 child。
+
 不要无限期保存已解析 child。应保存其 Spec 并通过 getter 解析，这样强制 recycle child 后可以得到当前 generation。
 
 ## 普通自动 release
@@ -215,7 +240,7 @@ Runtime 会先完整结束旧 generation 及其独占依赖树，再让 owner �
 `aliveForever` 阻止普通零 owner release：
 
 ```ts
-const telemetrySpec = viewModelSpec(() => new TelemetryViewModel(), {
+const telemetrySpec = viewModelSpec(TelemetryViewModel, () => new TelemetryViewModel(), {
   key: 'application-telemetry',
   aliveForever: true,
 });
@@ -246,10 +271,10 @@ const recycled = runtime.recycle(sessionSpec);
 
 ```ts
 runtime.recycle(viewModel); // Exactly that managed generation, if owned by this Runtime.
-runtime.recycle(spec); // Every generation matching this Spec token and key.
+runtime.recycle(spec); // Every generation matching this Spec identity and effective key.
 ```
 
-这一区别对 unkeyed Spec 至关重要。一个 Runtime 中每个 Binding 都可能有一个 unkeyed generation。`runtime.recycle(unkeyedSpec)` 会匹配所有这些 generation，因为它们拥有相同 token 与 undefined key。只需要使一个私有 generation 失效时，应使用 `runtime.recycle(instance)`。
+这一区别对 unkeyed Spec 至关重要。一个 Runtime 中每个 Binding 都可能有一个 unkeyed generation。`runtime.recycle(unkeyedSpec)` 会匹配该 Spec identity 位于各个 Binding 私有 effective key 下的所有 generation。只需要使一个私有 generation 失效时，应使用 `runtime.recycle(instance)`。
 
 对于 keyed Spec，recycle 会影响该 Runtime 中每个 Scope、plain Binding 与 parent dependency owner 所使用的共享 generation。
 
@@ -281,13 +306,14 @@ Pause 不会阻止 action、state mutation 或直接实例订阅。模块必须�
 
 ## 汇总表
 
-| 声明与 owner 状态                | 共享方式                                    | 零 owner 行为                      |
-| -------------------------------- | ------------------------------------------- | ---------------------------------- |
-| Unkeyed Spec                     | 每个 Binding 一个 generation                | 调度 disposal                      |
-| Keyed Spec                       | 每个 Runtime 的 token + key 一个 generation | 调度 disposal                      |
-| Keyed `aliveForever` Spec        | 每个 Runtime 的 token + key 一个 generation | 保留到 recycle 或 Runtime disposal |
-| 同一个 Spec 位于另一个 Runtime   | 永不与第一个 Runtime 共享                   | 独立管理                           |
-| 相同文本 key 位于不同 Spec token | 不共享                                      | 独立管理                           |
+| 声明与 owner 状态                       | 共享方式                                       | 零 owner 行为                      |
+| --------------------------------------- | ---------------------------------------------- | ---------------------------------- |
+| 显式 type 的 unkeyed Spec               | 每个显式 type 与 Binding 一个 generation       | 调度 disposal                      |
+| 显式 type 的 keyed Spec                 | 每个 Runtime 的显式 type + key 一个 generation | 调度 disposal                      |
+| 显式 type 的 keyed `aliveForever` Spec  | 每个 Runtime 的显式 type + key 一个 generation | 保留到 recycle 或 Runtime disposal |
+| 相同 type + key 的独立显式 Spec         | 在一个 Runtime 内共享                          | 跟随共享 generation                |
+| fallback token 不同的 builder-only Spec | 即使文本 key 相同也不共享                      | 独立管理                           |
+| 同一 identity 位于另一个 Runtime        | 永不与第一个 Runtime 共享                      | 独立管理                           |
 
 ## 相关指南
 

@@ -89,6 +89,42 @@ describe('平台与资源生命周期', () => {
     runtime.dispose();
   });
 
+  it('resume 时不会合并复用同一 callback 的不同 Binding', () => {
+    const sharedUpdate = vi.fn();
+    const runtime = new ViewModelRuntime();
+    const first = runtime.createBinding({ onUpdate: sharedUpdate });
+    const second = runtime.createBinding({ onUpdate: sharedUpdate });
+    const spec = viewModelSpec(LifecycleViewModel, () => new LifecycleViewModel(), {
+      key: 'paused-shared-callback',
+    });
+    const viewModel = first.watch(spec);
+    expect(second.watch(spec)).toBe(viewModel);
+    runtime.pause();
+
+    viewModel.change();
+    expect(sharedUpdate).not.toHaveBeenCalled();
+    runtime.resume();
+
+    expect(sharedUpdate).toHaveBeenCalledTimes(2);
+    runtime.dispose();
+  });
+
+  it('paused 期间已销毁 Binding 的排队更新不会在 resume 后投递', () => {
+    const update = vi.fn();
+    const runtime = new ViewModelRuntime();
+    const binding = runtime.createBinding({ onUpdate: update });
+    const spec = viewModelSpec(() => new LifecycleViewModel());
+    const viewModel = binding.watch(spec);
+    runtime.pause();
+
+    viewModel.change();
+    binding.dispose();
+    runtime.resume();
+
+    expect(update).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
   it('onCreate 失败会回滚并销毁失败 generation，下一次可重新构造', () => {
     const instances: FailingCreateViewModel[] = [];
     class FailingCreateViewModel extends ViewModel {

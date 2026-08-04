@@ -12,6 +12,7 @@
 - owner release 与最终 disposal；
 - `aliveForever` 与 recycle；
 - parent-child 依赖边与依赖环；
+- source-aware root 传播与同步通知 transaction 去重；
 - pause token 聚合；
 - React commit、StrictMode 与 generation replacement；
 - React Native AppState 或 Electron focus/visibility 映射。
@@ -66,10 +67,10 @@ class CounterViewModel extends StateViewModel<CounterState> {
   }
 }
 
-const counterSpec = viewModelSpec(() => new CounterViewModel());
+const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 ```
 
-除非测试刻意验证模块级 identity，否则每个测试的 Spec 应保持局部。这样可以防止一个测试意外依赖另一个测试的声明或容器。
+除非测试刻意验证模块级 identity，否则每个测试的 Spec 应保持局部。普通测试使用 explicit-type overload；这样既不会放弃生产 identity 语义，也能防止一个测试意外依赖另一个测试的声明或容器。
 
 ## 测试不可变 state 与直接订阅
 
@@ -77,7 +78,7 @@ const counterSpec = viewModelSpec(() => new CounterViewModel());
 it('notifies only when the state reference changes', () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
   try {
     const counter = binding.read(spec);
@@ -111,7 +112,7 @@ it('read retains without ordinary Binding updates; watch propagates', () => {
   const onUpdate = vi.fn();
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding({ onUpdate });
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
   try {
     const counter = binding.read(spec);
@@ -147,7 +148,7 @@ async function flushDisposals(): Promise<void> {
 it('disposes after the final owner leaves', async () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
   const counter = binding.read(spec);
 
   binding.dispose();
@@ -169,7 +170,7 @@ it('keeps unkeyed identity private to a Binding', () => {
   const runtime = new ViewModelRuntime();
   const first = runtime.createBinding();
   const second = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
 
   try {
     expect(first.read(spec)).toBe(first.read(spec));
@@ -183,16 +184,19 @@ it('keeps unkeyed identity private to a Binding', () => {
 ```
 
 ```ts
-it('shares the same token and key within one Runtime', () => {
+it('shares explicit type and key across independent Specs', () => {
   const runtime = new ViewModelRuntime();
   const first = runtime.createBinding();
   const second = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel(), {
+  const firstSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
+    key: 'shared-counter',
+  });
+  const secondSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
     key: 'shared-counter',
   });
 
   try {
-    expect(second.read(spec)).toBe(first.read(spec));
+    expect(second.read(secondSpec)).toBe(first.read(firstSpec));
   } finally {
     first.dispose();
     second.dispose();
@@ -201,10 +205,10 @@ it('shares the same token and key within one Runtime', () => {
 });
 ```
 
-identity 很重要时，还应测试反例：两个单独创建、文本 key 相同的 Spec 拥有不同 token，因此不能共享。
+builder-only overload 是兼容 fallback。每个单独创建的 builder-only Spec 都有私有 token，因此相同文本 key 不会使这些 fallback Spec 共享：
 
 ```ts
-it('does not share a key across different Spec tokens', () => {
+it('keeps independent builder-only fallback tokens isolated', () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
   const firstSpec = viewModelSpec(() => new CounterViewModel(), { key: 'same' });
@@ -264,7 +268,7 @@ it('runs the activated generation lifecycle in order', async () => {
   const events: LifecycleEvent[] = [];
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding({ id: 'screen' });
-  const spec = viewModelSpec(() => new LifecycleProbe(events));
+  const spec = viewModelSpec(LifecycleProbe, () => new LifecycleProbe(events));
 
   binding.read(spec);
   expect(events).toEqual(['create', 'bind:screen']);
@@ -291,7 +295,7 @@ it('resumes only after the final pause token is removed', () => {
   const events: LifecycleEvent[] = [];
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding({ onUpdate: updates });
-  const spec = viewModelSpec(() => new LifecycleProbe(events));
+  const spec = viewModelSpec(LifecycleProbe, () => new LifecycleProbe(events));
   const appToken = {};
   const windowToken = {};
 
@@ -352,8 +356,8 @@ it('bubbles watched child changes to the parent owner', () => {
   const rootUpdate = vi.fn();
   const runtime = new ViewModelRuntime();
   const root = runtime.createBinding({ onUpdate: rootUpdate });
-  const childSpec = viewModelSpec(() => new ChildViewModel());
-  const parentSpec = viewModelSpec(() => new ParentViewModel(childSpec));
+  const childSpec = viewModelSpec(ChildViewModel, () => new ChildViewModel());
+  const parentSpec = viewModelSpec(ParentViewModel, () => new ParentViewModel(childSpec));
 
   try {
     const parent = root.watch(parentSpec);
@@ -372,6 +376,10 @@ it('bubbles watched child changes to the parent owner', () => {
 
 编写对应的 `childRead` 测试，并断言普通 child 通知不会改变 `parent.version` 或调用 root update。两种模式都应保活 child，直到 parent 边被 release。
 
+测试 source-aware child 生命周期时，创建由 root Binding A/B 共同持有的 shared keyed parent。在加入 B 前后分别解析 unkeyed child，然后断言 child 会在 `onBind` 中收到当前 root ID；A 离开时只移除 A；B 仍存在时保持同一 generation；每个逻辑 root ID 只有在最后一条 direct 或 parent source 离开后才收到一次 `onUnbind`。用 direct leaf path 加两条 parent path 覆盖多 source，并把其中一例扩展到多层依赖。
+
+测试同步通知 transaction 时，构造 diamond graph，并可让 root 同时直接 watch shared leaf。一次同步 leaf change 对每个 parent 与每个 Binding owner/callback pair 最多通知一次。若两个 Binding 有意复用同一个 callback function，每个 owner/callback pair 仍应各执行一次；后续 microtask 中的通知应开启新 transaction。
+
 对于复杂模块图，应添加显式依赖环测试并期待 `ViewModelDependencyCycleError`。依赖环失败不应遗留半创建 generation 或已获取资源。
 
 ## 分别测试 `aliveForever` 与 recycle
@@ -382,7 +390,7 @@ it('bubbles watched child changes to the parent owner', () => {
 it('retains an aliveForever generation until explicit invalidation', async () => {
   const runtime = new ViewModelRuntime();
   const binding = runtime.createBinding();
-  const spec = viewModelSpec(() => new CounterViewModel(), {
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
     key: 'application-counter',
     aliveForever: true,
   });
@@ -446,7 +454,7 @@ class FakeLifecycle implements ElectronLifecycleSource {
 it('rerenders a selector only when its selected value changes', async () => {
   const runtime = new ViewModelRuntime();
   const lifecycle = new FakeLifecycle();
-  const spec = viewModelSpec(() => new CounterViewModel());
+  const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
   let counter: CounterViewModel | undefined;
   let selected = -1;
   let renders = 0;

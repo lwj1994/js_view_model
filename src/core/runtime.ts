@@ -4,16 +4,24 @@ import {
   ViewModelRuntimeDisposedError,
   ViewModelSpecError,
 } from './errors.js';
-import { isViewModelSpec, ViewModelSpec } from './spec.js';
+import { getViewModelTypeToken, isViewModelSpec, ViewModelSpec } from './spec.js';
 import type {
+  Equality,
+  StateListener,
   ViewModelBindingOptions,
+  ViewModelCacheLookup,
   ViewModelChange,
   ViewModelDispose,
   ViewModelKey,
   ViewModelListener,
   ViewModelMode,
+  ViewModelType,
 } from './types.js';
-import { isViewModel, VIEW_MODEL_INTERNAL, ViewModel } from './view-model.js';
+import {
+  enqueueViewModelUpdateCallback,
+  markViewModelParentNotified,
+} from './update-transaction.js';
+import { isViewModel, StateViewModel, VIEW_MODEL_INTERNAL, ViewModel } from './view-model.js';
 
 const DEFAULT_PAUSE_TOKEN = Symbol('view_model.default_pause');
 
@@ -37,11 +45,14 @@ interface PendingDisposal {
   cancelled: boolean;
 }
 
+export type ViewModelCacheTarget<T extends ViewModel> = ViewModelSpec<T> | ViewModelType<T>;
+
 interface InstanceHandle<T extends ViewModel = ViewModel> {
   readonly spec: ViewModelSpec<T>;
   readonly viewModel: T;
   readonly generation: number;
   readonly owners: Set<ViewModelBinding>;
+  readonly externalOwnerSources: Map<ViewModelBinding, Set<ViewModelBinding>>;
   readonly dependencyBinding: ViewModelBinding;
   readonly unkeyedBinding: ViewModelBinding | undefined;
   version: number;
@@ -55,6 +66,10 @@ function describeHandle(handle: InstanceHandle): string {
   return `${handle.spec.debugLabel}#${handle.generation}`;
 }
 
+function sameValueZero(left: ViewModelKey | undefined, right: ViewModelKey | undefined): boolean {
+  return Object.is(left, right) || (left === 0 && right === 0);
+}
+
 /**
  * A runtime is the outermost boundary for keyed instance sharing, the
  * dependency graph, and platform pause state.
@@ -65,14 +80,16 @@ export class ViewModelRuntime {
   readonly #byViewModel = new WeakMap<ViewModel, InstanceHandle>();
   readonly #edges = new Map<InstanceHandle, Set<InstanceHandle>>();
   readonly #pauseTokens = new Set<unknown>();
-  readonly #pausedCallbacks = new Set<ViewModelListener>();
+  readonly #pausedCallbacks = new Map<ViewModelBinding, Set<ViewModelListener>>();
+  readonly #deliveryCallbacks = new WeakMap<
+    ViewModelBinding,
+    Map<ViewModelListener, ViewModelListener>
+  >();
   #generation = 0;
   #disposed = false;
   #dispatching = false;
   #notificationQueue: InstanceHandle[] = [];
   #queuedHandles = new Set<InstanceHandle>();
-  #transactionCallbacks = new Set<ViewModelListener>();
-  #bubbledParents = new Set<InstanceHandle>();
 
   public get isDisposed(): boolean {
     return this.#disposed;
@@ -121,11 +138,13 @@ export class ViewModelRuntime {
       }
     }
 
-    const callbacks = [...this.#pausedCallbacks];
+    const callbacks = [...this.#pausedCallbacks].flatMap(([owner, entries]) =>
+      [...entries].map((callback) => ({ callback, owner })),
+    );
     this.#pausedCallbacks.clear();
-    for (const callback of callbacks) {
+    for (const { callback, owner } of callbacks) {
       try {
-        callback();
+        this._queueCallback(owner, callback);
       } catch (error) {
         errors.push(error);
       }
@@ -141,7 +160,8 @@ export class ViewModelRuntime {
     this.#assertAlive();
     const handles = isViewModelSpec(target)
       ? [...this.#handles].filter(
-          (handle) => handle.spec.token === target.token && handle.spec.key === target.key,
+          (handle) =>
+            handle.spec.token === target.token && sameValueZero(handle.spec.key, target.key),
         )
       : [this.#byViewModel.get(target)].filter(
           (handle): handle is InstanceHandle => handle !== undefined,
@@ -229,6 +249,14 @@ export class ViewModelRuntime {
     if (!isViewModel(viewModel)) {
       throw new ViewModelSpecError(`${spec.debugLabel} 的 builder 必须返回 ViewModel 实例。`);
     }
+    if (
+      spec.type !== undefined &&
+      !Object.prototype.isPrototypeOf.call(spec.type.prototype, viewModel)
+    ) {
+      throw new ViewModelSpecError(
+        `${spec.debugLabel} 的 builder 必须返回显式 type 本身或其子类实例。`,
+      );
+    }
 
     const generation = ++this.#generation;
     // Create the dependency binding before attach. Application code cannot
@@ -238,6 +266,7 @@ export class ViewModelRuntime {
       viewModel,
       generation,
       owners: new Set<ViewModelBinding>(),
+      externalOwnerSources: new Map<ViewModelBinding, Set<ViewModelBinding>>(),
       dependencyBinding: undefined as unknown as ViewModelBinding,
       unkeyedBinding: spec.key === undefined ? binding : undefined,
       version: viewModel.version,
@@ -278,6 +307,47 @@ export class ViewModelRuntime {
     return handle;
   }
 
+  /** Lookup-only cache query used by advanced Binding APIs. @internal */
+  public _findCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup: ViewModelCacheLookup = {},
+  ): InstanceHandle<T> | undefined {
+    this.#assertAlive();
+    const token = this.#cacheTargetToken(target);
+
+    if (lookup.key !== undefined) {
+      const keyed = this.#keyed.get(token)?.get(lookup.key);
+      if (keyed !== undefined && !keyed.disposed) {
+        return keyed as InstanceHandle<T>;
+      }
+      if (lookup.tag === undefined) return undefined;
+    }
+
+    let latest: InstanceHandle<T> | undefined;
+    for (const handle of this.#handles) {
+      if (handle.disposed || handle.spec.token !== token) continue;
+      if (lookup.tag !== undefined && !Object.is(handle.spec.tag, lookup.tag)) continue;
+      latest = handle as InstanceHandle<T>;
+    }
+    return latest;
+  }
+
+  /** Lookup every cached generation of one type/spec carrying the tag. @internal */
+  public _findCachesByTag<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    tag: unknown,
+  ): InstanceHandle<T>[] {
+    this.#assertAlive();
+    const token = this.#cacheTargetToken(target);
+    const matches: InstanceHandle<T>[] = [];
+    for (const handle of this.#handles) {
+      if (!handle.disposed && handle.spec.token === token && Object.is(handle.spec.tag, tag)) {
+        matches.push(handle as InstanceHandle<T>);
+      }
+    }
+    return matches;
+  }
+
   /** @internal */
   public _acquire(binding: ViewModelBinding, handle: InstanceHandle): void {
     this.#assertAlive();
@@ -302,10 +372,15 @@ export class ViewModelRuntime {
         handle.activated = true;
         if (this.isPaused) handle.viewModel[VIEW_MODEL_INTERNAL].pause();
       }
-      handle.viewModel[VIEW_MODEL_INTERNAL].bind(binding.id);
+      if (parent === undefined) {
+        this._addExternalOwnerSource(handle, binding, binding);
+      } else {
+        handle.viewModel[VIEW_MODEL_INTERNAL].bind(binding.id);
+        for (const owner of parent.externalOwnerSources.keys()) {
+          this._addExternalOwnerSource(handle, owner, binding);
+        }
+      }
     } catch (error) {
-      handle.owners.delete(binding);
-      if (parent !== undefined) this.#unlink(parent, handle);
       this.#disposeHandle(handle);
       throw error;
     }
@@ -314,35 +389,79 @@ export class ViewModelRuntime {
   /** @internal */
   public _release(binding: ViewModelBinding, handle: InstanceHandle): void {
     if (handle.disposed || !handle.owners.delete(binding)) return;
-    let unbindError: unknown;
-    try {
-      handle.viewModel[VIEW_MODEL_INTERNAL].unbind(binding.id);
-    } catch (error) {
-      unbindError = error;
-    }
     const parent = binding._parentHandle;
-    if (parent !== undefined) this.#unlink(parent, handle);
+    const errors: unknown[] = [];
+    if (parent === undefined) {
+      try {
+        this._removeExternalOwnerSource(handle, binding, binding);
+      } catch (error) {
+        errors.push(error);
+      }
+    } else {
+      for (const [owner, sources] of [...handle.externalOwnerSources]) {
+        if (!sources.has(binding)) continue;
+        try {
+          this._removeExternalOwnerSource(handle, owner, binding);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      try {
+        handle.viewModel[VIEW_MODEL_INTERNAL].unbind(binding.id);
+      } catch (error) {
+        errors.push(error);
+      }
+      this.#unlink(parent, handle);
+    }
 
     if (handle.owners.size === 0 && !handle.spec.aliveForever) this.#scheduleDisposal(handle);
 
-    if (unbindError !== undefined) throw unbindError;
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `${describeHandle(handle)} 解除 owner 时发生错误。`);
+    }
   }
 
   /** @internal */
-  public _queueCallback(callback: ViewModelListener): void {
+  public _queueCallback(owner: ViewModelBinding, callback: ViewModelListener): void {
     if (this.#disposed) return;
-    if (this.#dispatching) {
-      this.#transactionCallbacks.add(callback);
-      return;
-    }
-    this.#deliver(callback);
+    enqueueViewModelUpdateCallback(owner, this.#deliveryCallback(owner, callback));
+  }
+
+  /** @internal */
+  public _forgetCallbacks(owner: ViewModelBinding): void {
+    this.#pausedCallbacks.delete(owner);
+    this.#deliveryCallbacks.delete(owner);
   }
 
   /** @internal */
   public _bubbleDependency(parent: InstanceHandle, child: InstanceHandle): void {
-    if (this.#disposed || parent.disposed || this.#bubbledParents.has(parent)) return;
-    this.#bubbledParents.add(parent);
+    if (this.#disposed || parent.disposed || !markViewModelParentNotified(parent)) return;
     parent.viewModel[VIEW_MODEL_INTERNAL].dependencyNotify(child.viewModel);
+  }
+
+  /** @internal */
+  public _addExternalOwnerSource(
+    handle: InstanceHandle,
+    owner: ViewModelBinding,
+    source: ViewModelBinding,
+  ): void {
+    if (handle.disposed) return;
+    const sources = handle.externalOwnerSources.get(owner) ?? new Set<ViewModelBinding>();
+    if (!sources.add(source)) return;
+    handle.externalOwnerSources.set(owner, sources);
+    handle.viewModel[VIEW_MODEL_INTERNAL].bind(owner.id);
+    if (sources.size === 1) {
+      handle.dependencyBinding._propagateExternalOwnerAdded(owner);
+    }
+  }
+
+  /** @internal */
+  public _removeExternalOwnerSource(
+    handle: InstanceHandle,
+    owner: ViewModelBinding,
+    source: ViewModelBinding,
+  ): void {
+    this.#removeExternalOwnerSource(handle, owner, source, false);
   }
 
   #notifyHandle(handle: InstanceHandle, change: ViewModelChange): void {
@@ -374,25 +493,57 @@ export class ViewModelRuntime {
       this.#dispatching = false;
       this.#notificationQueue = [];
       this.#queuedHandles.clear();
-      this.#bubbledParents.clear();
-      const callbacks = [...this.#transactionCallbacks];
-      this.#transactionCallbacks.clear();
-      for (const callback of callbacks) {
-        try {
-          this.#deliver(callback);
-        } catch (error) {
-          errors.push(error);
-        }
-      }
     }
     if (errors.length > 0) throw new AggregateError(errors, 'ViewModel 通知时发生错误。');
   }
 
-  #deliver(callback: ViewModelListener): void {
+  #deliveryCallback(owner: ViewModelBinding, callback: ViewModelListener): ViewModelListener {
+    const deliveries = this.#deliveryCallbacks.get(owner) ?? new Map();
+    const existing = deliveries.get(callback);
+    if (existing !== undefined) return existing;
+    const delivery = (): void => this.#deliver(owner, callback);
+    deliveries.set(callback, delivery);
+    this.#deliveryCallbacks.set(owner, deliveries);
+    return delivery;
+  }
+
+  #deliver(owner: ViewModelBinding, callback: ViewModelListener): void {
+    if (this.#disposed || owner.isDisposed) return;
     if (this.isPaused) {
-      this.#pausedCallbacks.add(callback);
+      const callbacks = this.#pausedCallbacks.get(owner) ?? new Set<ViewModelListener>();
+      callbacks.add(callback);
+      this.#pausedCallbacks.set(owner, callbacks);
     } else {
       callback();
+    }
+  }
+
+  #removeExternalOwnerSource(
+    handle: InstanceHandle,
+    owner: ViewModelBinding,
+    source: ViewModelBinding,
+    allowDisposed: boolean,
+  ): void {
+    if (handle.disposed && !allowDisposed) return;
+    const sources = handle.externalOwnerSources.get(owner);
+    if (sources === undefined || !sources.delete(source)) return;
+
+    const errors: unknown[] = [];
+    try {
+      handle.viewModel[VIEW_MODEL_INTERNAL].unbind(owner.id);
+    } catch (error) {
+      errors.push(error);
+    }
+    if (sources.size === 0) {
+      handle.externalOwnerSources.delete(owner);
+      try {
+        handle.dependencyBinding._propagateExternalOwnerRemoved(owner);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `${describeHandle(handle)} 移除 root source 时发生错误。`);
     }
   }
 
@@ -483,7 +634,17 @@ export class ViewModelRuntime {
     const errors: unknown[] = [];
     const owners = [...handle.owners];
     handle.owners.clear();
+    for (const [owner, sources] of [...handle.externalOwnerSources]) {
+      for (const source of [...sources]) {
+        try {
+          this.#removeExternalOwnerSource(handle, owner, source, true);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    }
     for (const owner of owners) {
+      if (owner._parentHandle === undefined) continue;
       try {
         handle.viewModel[VIEW_MODEL_INTERNAL].unbind(owner.id);
       } catch (error) {
@@ -533,6 +694,12 @@ export class ViewModelRuntime {
     }
   }
 
+  #cacheTargetToken<T extends ViewModel>(target: ViewModelCacheTarget<T>): symbol {
+    return isViewModelSpec(target)
+      ? target.token
+      : getViewModelTypeToken(target as ViewModelType<T>);
+  }
+
   #assertAlive(): void {
     if (this.#disposed) {
       throw new ViewModelRuntimeDisposedError('ViewModelRuntime 已销毁。');
@@ -549,6 +716,7 @@ export class ViewModelBinding {
   readonly #onUpdate: ViewModelListener | undefined;
   readonly #unkeyed = new Map<symbol, InstanceHandle>();
   readonly #entries = new Map<InstanceHandle, BindingEntry>();
+  readonly #ownedSubscriptions = new Map<InstanceHandle, Set<ViewModelDispose>>();
   #disposed = false;
 
   public constructor(runtime: ViewModelRuntime, options?: ViewModelBindingOptions);
@@ -598,6 +766,92 @@ export class ViewModelBinding {
     return handle.viewModel;
   }
 
+  /** Lookup an existing cached generation without listening to ordinary notifications. */
+  public readCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup: ViewModelCacheLookup = {},
+  ): T {
+    return this.#requireCached(target, lookup, false).viewModel;
+  }
+
+  /** Lookup an existing cached generation and bubble/deliver its ordinary notifications. */
+  public watchCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup: ViewModelCacheLookup = {},
+  ): T {
+    return this.#requireCached(target, lookup, true).viewModel;
+  }
+
+  public maybeReadCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup: ViewModelCacheLookup = {},
+  ): T | undefined {
+    return this.#maybeCached(target, lookup, false)?.viewModel;
+  }
+
+  public maybeWatchCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup: ViewModelCacheLookup = {},
+  ): T | undefined {
+    return this.#maybeCached(target, lookup, true)?.viewModel;
+  }
+
+  public readCachesByTag<T extends ViewModel>(target: ViewModelCacheTarget<T>, tag: unknown): T[] {
+    return this.#cachesByTag(target, tag, false).map((handle) => handle.viewModel);
+  }
+
+  public watchCachesByTag<T extends ViewModel>(target: ViewModelCacheTarget<T>, tag: unknown): T[] {
+    return this.#cachesByTag(target, tag, true).map((handle) => handle.viewModel);
+  }
+
+  /** Attach a side-effect listener owned and cleaned up by this Binding. */
+  public listen<T extends ViewModel>(
+    spec: ViewModelSpec<T>,
+    onChanged: ViewModelListener,
+  ): ViewModelDispose {
+    this.#assertAlive();
+    const handle = this.runtime._prepare(this, spec);
+    this.#ensureEntry(handle, false);
+    return this.#trackOwnedSubscription(
+      handle,
+      handle.viewModel.subscribe(() => onChanged()),
+    );
+  }
+
+  /** Attach a StateViewModel diff listener owned and cleaned up by this Binding. */
+  public listenState<TState>(
+    spec: ViewModelSpec<StateViewModel<TState>>,
+    onChanged: StateListener<TState>,
+  ): ViewModelDispose {
+    this.#assertAlive();
+    const handle = this.runtime._prepare(this, spec);
+    this.#ensureEntry(handle, false);
+    return this.#trackOwnedSubscription(
+      handle,
+      handle.viewModel.subscribeState((change) => onChanged(change)),
+    );
+  }
+
+  /** Attach a selected-state listener without adding broad watch propagation. */
+  public listenStateSelect<TState, TSelection>(
+    spec: ViewModelSpec<StateViewModel<TState>>,
+    selector: (state: TState) => TSelection,
+    onChanged: StateListener<TSelection>,
+    equals: Equality<TSelection> = Object.is,
+  ): ViewModelDispose {
+    this.#assertAlive();
+    const handle = this.runtime._prepare(this, spec);
+    this.#ensureEntry(handle, false);
+    const dispose = handle.viewModel.subscribeState(({ current, previous }) => {
+      const currentSelection = selector(current);
+      const previousSelection = selector(previous);
+      if (!equals(previousSelection, currentSelection)) {
+        onChanged({ current: currentSelection, previous: previousSelection });
+      }
+    });
+    return this.#trackOwnedSubscription(handle, dispose);
+  }
+
   /** Commit-safe: establishes Binding ownership and registers the current hook subscription. */
   /** @internal */
   public subscribe<T extends ViewModel>(
@@ -635,7 +889,18 @@ export class ViewModelBinding {
   public dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.runtime._forgetCallbacks(this);
     const errors: unknown[] = [];
+    for (const subscriptions of [...this.#ownedSubscriptions.values()]) {
+      for (const dispose of [...subscriptions]) {
+        try {
+          dispose();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    }
+    this.#ownedSubscriptions.clear();
     for (const [handle, entry] of [...this.#entries]) {
       for (const record of entry.subscriptions) record.active = false;
       entry.subscriptions.clear();
@@ -677,11 +942,11 @@ export class ViewModelBinding {
     }
 
     if (entry.imperativeWatch && this.#onUpdate !== undefined) {
-      this.runtime._queueCallback(this.#onUpdate);
+      this.runtime._queueCallback(this, this.#onUpdate);
     }
     for (const record of entry.subscriptions) {
       if (record.mode === 'watch' && record.active) {
-        this.runtime._queueCallback(record.notify);
+        this.runtime._queueCallback(this, record.notify);
       }
     }
   }
@@ -693,13 +958,127 @@ export class ViewModelBinding {
     this.#entries.delete(handle);
     this._deleteUnkeyed(handle.spec.token, handle);
 
-    if (this._parentHandle !== undefined && !this._parentHandle.disposed) {
-      this.runtime._bubbleDependency(this._parentHandle, handle);
+    const errors = this.#disposeOwnedSubscriptions(handle);
+
+    try {
+      if (this._parentHandle !== undefined && !this._parentHandle.disposed) {
+        this.runtime._bubbleDependency(this._parentHandle, handle);
+      }
+    } catch (error) {
+      errors.push(error);
     }
-    if (this.#onUpdate !== undefined) this.runtime._queueCallback(this.#onUpdate);
+    try {
+      if (this.#onUpdate !== undefined) this.runtime._queueCallback(this, this.#onUpdate);
+    } catch (error) {
+      errors.push(error);
+    }
     for (const record of entry.subscriptions) {
-      if (record.active) this.runtime._queueCallback(record.notify);
+      if (!record.active) continue;
+      try {
+        this.runtime._queueCallback(this, record.notify);
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    if (errors.length > 0) {
+      throw new AggregateError(
+        errors,
+        `ViewModelBinding ${this.id} 处理 generation 销毁时发生错误。`,
+      );
+    }
+  }
+
+  /** @internal */
+  public _propagateExternalOwnerAdded(owner: ViewModelBinding): void {
+    if (this.#disposed || this._parentHandle === undefined) return;
+    for (const handle of this.#entries.keys()) {
+      this.runtime._addExternalOwnerSource(handle, owner, this);
+    }
+  }
+
+  /** @internal */
+  public _propagateExternalOwnerRemoved(owner: ViewModelBinding): void {
+    if (this._parentHandle === undefined) return;
+    for (const handle of this.#entries.keys()) {
+      this.runtime._removeExternalOwnerSource(handle, owner, this);
+    }
+  }
+
+  #requireCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup: ViewModelCacheLookup,
+    watch: boolean,
+  ): InstanceHandle<T> {
+    const handle = this.#maybeCached(target, lookup, watch);
+    if (handle !== undefined) return handle;
+
+    const label = isViewModelSpec(target)
+      ? target.debugLabel
+      : ((target as unknown as { readonly name?: string }).name ?? 'ViewModel');
+    throw new ViewModelSpecError(`${label} 没有匹配的缓存实例。`);
+  }
+
+  #maybeCached<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    lookup: ViewModelCacheLookup,
+    watch: boolean,
+  ): InstanceHandle<T> | undefined {
+    this.#assertAlive();
+    const handle = this.runtime._findCached(target, lookup);
+    if (handle === undefined) return undefined;
+    const entry = this.#ensureEntry(handle, watch);
+    if (watch) entry.imperativeWatch = true;
+    return handle;
+  }
+
+  #cachesByTag<T extends ViewModel>(
+    target: ViewModelCacheTarget<T>,
+    tag: unknown,
+    watch: boolean,
+  ): InstanceHandle<T>[] {
+    this.#assertAlive();
+    const handles = this.runtime._findCachesByTag(target, tag);
+    for (const handle of handles) {
+      const entry = this.#ensureEntry(handle, watch);
+      if (watch) entry.imperativeWatch = true;
+    }
+    return handles;
+  }
+
+  #trackOwnedSubscription(
+    handle: InstanceHandle,
+    disposeSubscription: ViewModelDispose,
+  ): ViewModelDispose {
+    const subscriptions = this.#ownedSubscriptions.get(handle) ?? new Set<ViewModelDispose>();
+    let active = true;
+    const dispose = (): void => {
+      if (!active) return;
+      active = false;
+      try {
+        disposeSubscription();
+      } finally {
+        subscriptions.delete(dispose);
+        if (subscriptions.size === 0) this.#ownedSubscriptions.delete(handle);
+      }
+    };
+    subscriptions.add(dispose);
+    this.#ownedSubscriptions.set(handle, subscriptions);
+    return dispose;
+  }
+
+  #disposeOwnedSubscriptions(handle: InstanceHandle): unknown[] {
+    const subscriptions = this.#ownedSubscriptions.get(handle);
+    if (subscriptions === undefined) return [];
+    const errors: unknown[] = [];
+    for (const dispose of [...subscriptions]) {
+      try {
+        dispose();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    this.#ownedSubscriptions.delete(handle);
+    return errors;
   }
 
   #ensureEntry(handle: InstanceHandle, bubble: boolean): BindingEntry {

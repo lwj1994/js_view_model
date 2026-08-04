@@ -15,10 +15,7 @@ ViewModels. They resolve one another lazily through `viewModelBinding`, share
 instances within an explicit `ViewModelRuntime`, and release resources when
 their final owner leaves.
 
-> [!WARNING]
-> **v0.1 Alpha:** APIs may still change. Pin the version and validate it in a
-> non-critical project first.
->
+> [!IMPORTANT]
 > This package supports React Native and Electron applications only. It does
 > not support ordinary React Web, SSR, React Server Components, or general DOM
 > applications.
@@ -54,7 +51,7 @@ class SessionViewModel extends StateViewModel<SessionState> {
   }
 }
 
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'application-session',
   aliveForever: true,
   debugLabel: 'Session',
@@ -70,7 +67,7 @@ class OrdersRepository extends ViewModel {
   }
 }
 
-export const ordersRepositorySpec = viewModelSpec(() => new OrdersRepository());
+export const ordersRepositorySpec = viewModelSpec(OrdersRepository, () => new OrdersRepository());
 
 export const appRuntime = new ViewModelRuntime();
 const bootstrapBinding = appRuntime.createBinding({ id: 'application-bootstrap' });
@@ -88,10 +85,10 @@ session, keep the Spec keyed for cross-Binding sharing and omit
 `aliveForever`.
 
 The same `appRuntime` can be injected into a React Native or Electron renderer
-`ViewModelScope`. A keyed Spec then resolves to the same generation across
-plain hosts and React Scopes in that runtime. “Application-wide” means one
-explicit runtime inside one JavaScript realm; ViewModel objects never cross an
-Electron process boundary.
+`ViewModelScope`. The same explicit ViewModel type and key then resolve to one
+generation across plain hosts and React Scopes in that runtime. “Application-wide”
+means one explicit runtime inside one JavaScript realm; ViewModel objects never
+cross an Electron process boundary.
 
 ## Why React needs a Scope
 
@@ -107,9 +104,9 @@ that ownership ends. Non-React code does not need a Scope; it uses
 `runtime.createBinding()` directly.
 
 A nested Scope inherits its parent Runtime by default but creates a separate
-Binding. This isolates unkeyed instances while allowing `(Spec token, key)`
-instances to be shared. A Scope that receives an external Runtime does not own
-it; the caller must eventually dispose that Runtime.
+Binding. This isolates unkeyed instances while allowing an explicit ViewModel
+type plus explicit key to be shared. A Scope that receives an external Runtime
+does not own it; the caller must eventually dispose that Runtime.
 
 One subtle but important rule: lifecycle pause/resume is Runtime-wide. If two
 Scopes share a Runtime, an inactive lifecycle source on either Scope pauses all
@@ -120,9 +117,9 @@ paused screen/window, or model focus as ordinary application state.
 
 | Environment                                 | Entry point               | Status          |
 | ------------------------------------------- | ------------------------- | --------------- |
-| Platform-neutral TypeScript / Electron main | `view_model/core`         | Alpha           |
-| React Native                                | `view_model/react-native` | Alpha           |
-| Electron renderer                           | `view_model/electron`     | Alpha           |
+| Platform-neutral TypeScript / Electron main | `view_model/core`         | Supported       |
+| React Native                                | `view_model/react-native` | Supported       |
+| Electron renderer                           | `view_model/electron`     | Supported       |
 | Ordinary React Web / SSR                    | None                      | **Unsupported** |
 
 The platform entries re-export the core API. Import ViewModel classes and Specs
@@ -130,29 +127,10 @@ from `view_model/core`, and import Scope/hooks from the relevant platform entry
 to keep the runtime boundary visible. There is deliberately no
 `view_model/react` export.
 
-## Install from source
-
-v0.1 Alpha is currently distributed from GitHub and has not been published to
-npm. Build and pack it locally:
+## Installation
 
 ```sh
-git clone https://github.com/lwj1994/js_view_model.git
-cd js_view_model
-npm install
-npm run build
-npm pack
-```
-
-Install the generated archive in the target application:
-
-```sh
-npm install /absolute/path/to/js_view_model/view_model-0.1.0.tgz
-```
-
-After a future npm release, installation will become:
-
-```sh
-npm install view_model
+npm install view_model@0.2.0
 ```
 
 React Native applications must provide compatible `react` and `react-native`
@@ -162,7 +140,8 @@ exact peer ranges.
 
 ## React Native quick start
 
-Declare Specs at module scope so their identity remains stable across renders:
+Declare Specs at module scope to avoid render-time allocation and keep their
+builders and options stable:
 
 ```tsx
 import { Button, Text, View } from 'react-native';
@@ -179,7 +158,7 @@ class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   };
 }
 
-const counterSpec = viewModelSpec(() => new CounterViewModel(), {
+const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
   debugLabel: 'Counter',
 });
 
@@ -228,7 +207,7 @@ class WindowCounter extends StateViewModel<number> {
   };
 }
 
-const counterSpec = viewModelSpec(() => new WindowCounter());
+const counterSpec = viewModelSpec(WindowCounter, () => new WindowCounter());
 
 function App(): React.JSX.Element {
   const count = useViewModelSelector(counterSpec, (counter) => counter.state);
@@ -248,18 +227,35 @@ then expose serializable DTOs/events through a narrow preload IPC API.
 
 ## Core rules
 
-- Keep each `ViewModelSpec` stable at module scope. Runtime identity is the
-  stable **Spec token plus key**, not the ViewModel class or key alone.
+- Prefer `viewModelSpec(MyViewModel, () => new MyViewModel(), options)`. Within
+  one Runtime, explicit identity is the **ViewModel type plus effective key**;
+  an omitted key is private to the Binding. Separate explicit Specs with the
+  same type and key share one generation.
+- Keep Specs stable at module scope to avoid render-time allocation and keep
+  builders/options consistent. The builder-only form remains a compatibility
+  fallback, where each Spec receives an independent identity token.
 - Both `watch` and `read` create/resolve an instance and establish lifecycle
   ownership. Only `watch` propagates ordinary ViewModel notifications.
-- Unkeyed instances are private to a Binding. A key shares one Spec identity
-  across Bindings in the same Runtime. `aliveForever` requires an explicit key.
+- One complete synchronous notification cascade shares a transaction. The same
+  callback delivery is deduplicated per Binding, while separate Bindings still
+  receive their own update; asynchronous notifications start a new transaction.
+- Unkeyed instances are private to a Binding. An explicit key shares one
+  explicit ViewModel type identity across Bindings in the same Runtime.
+  `aliveForever` requires an explicit key.
 - Builders and constructors must remain pure. Start timers, IPC, native
   subscriptions, and other resources in `onCreate`, and register cleanup with
   `addDispose`.
 - Resolve child modules through non-caching `viewModelBinding.read/watch`
   getters. Access those getters only after commit, from ViewModel actions or
   lifecycle/internal collaboration—not from React render or selectors.
+- Root Binding ownership sources attached to a parent propagate to its resolved
+  children, including later bind/unbind changes in real time.
+- Cached/tag Binding APIs (`readCached`, `watchCached`, their `maybe` variants,
+  and `readCachesByTag`/`watchCachesByTag`) are advanced lookup-only tools. They
+  never create a missing generation, and tags do not participate in identity.
+- Use `binding.listen`, `listenState`, or `listenStateSelect` for Binding-owned
+  side-effect subscriptions. Their disposer supports early cleanup; Binding
+  disposal or generation recycle also removes them automatically.
 - `recycle` is a Runtime-wide force-dispose operation that overrides every
   owner. Prefer a new explicit key unless global invalidation is intentional.
 - One hook cleanup removes only that hook listener. The Scope Binding retains

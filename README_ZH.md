@@ -9,9 +9,7 @@
 
 `view_model` 不只管理页面状态。功能、repository、service、coordinator、设备连接或领域能力都可以成为受管理的 ViewModel。模块通过 `viewModelBinding` 按需解析彼此，在明确的 `ViewModelRuntime` 内共享实例，并在最后一个 owner 离开后释放资源。
 
-> [!WARNING]
-> **v0.1 Alpha：** API 仍可能调整。请锁定版本，并先在非关键项目中验证。
->
+> [!IMPORTANT]
 > 本包只支持 React Native 与 Electron App，不支持普通 React Web、SSR、React Server Components 或通用 DOM 应用。
 
 ## 应用级 DI，不只是 UI Store
@@ -43,7 +41,7 @@ class SessionViewModel extends StateViewModel<SessionState> {
   }
 }
 
-export const sessionSpec = viewModelSpec(() => new SessionViewModel(), {
+export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'application-session',
   aliveForever: true,
   debugLabel: 'Session',
@@ -59,7 +57,7 @@ class OrdersRepository extends ViewModel {
   }
 }
 
-export const ordersRepositorySpec = viewModelSpec(() => new OrdersRepository());
+export const ordersRepositorySpec = viewModelSpec(OrdersRepository, () => new OrdersRepository());
 
 export const appRuntime = new ViewModelRuntime();
 const bootstrapBinding = appRuntime.createBinding({ id: 'application-bootstrap' });
@@ -73,7 +71,7 @@ bootstrapBinding.dispose();
 
 示例使用 `aliveForever`，只是为了让 session 跨越一次有意的零 owner 交接。若某个 application Binding 始终拥有 session，应保留 key 以便跨 Binding 共享，同时省略 `aliveForever`。
 
-同一个 `appRuntime` 可注入 React Native 或 Electron renderer 的 `ViewModelScope`。同一个 keyed Spec 随后能在 plain host 与 React Scope 间解析到相同 generation。这里的“应用级”严格指单个 JavaScript realm 内的显式 Runtime；ViewModel 对象不会跨 Electron 进程共享。
+同一个 `appRuntime` 可注入 React Native 或 Electron renderer 的 `ViewModelScope`。相同的显式 ViewModel type 与 key 随后能在 plain host 与 React Scope 间解析到同一 generation。这里的“应用级”严格指单个 JavaScript realm 内的显式 Runtime；ViewModel 对象不会跨 Electron 进程共享。
 
 ## 为什么 React 需要 Scope
 
@@ -85,7 +83,7 @@ bootstrapBinding.dispose();
 
 没有 Scope，hook 无法判断实例属于哪个 Runtime，也无法知道 owner 何时结束。非 React 代码不需要 Scope，直接调用 `runtime.createBinding()`。
 
-嵌套 Scope 默认继承父 Runtime，但会创建独立 Binding。因此 unkeyed 实例相互隔离，`(Spec token, key)` 身份仍可共享。传入外部 Runtime 的 Scope 不拥有该 Runtime，最终 dispose 由调用方负责。
+嵌套 Scope 默认继承父 Runtime，但会创建独立 Binding。因此 unkeyed 实例相互隔离，显式 ViewModel type + 显式 key 的身份仍可共享。传入外部 Runtime 的 Scope 不拥有该 Runtime，最终 dispose 由调用方负责。
 
 一个容易误解的规则：lifecycle pause/resume 作用于整个 Runtime。若两个 Scope 共享 Runtime，任一 Scope 的 lifecycle source inactive 都会暂停该 Runtime 中全部已激活 ViewModel。页面或窗口需要独立暂停时，应使用独立 Runtime，或把 focus 建模为普通业务状态。
 
@@ -93,42 +91,24 @@ bootstrapBinding.dispose();
 
 | 运行环境                            | 入口                      | 状态       |
 | ----------------------------------- | ------------------------- | ---------- |
-| 平台无关 TypeScript / Electron main | `view_model/core`         | Alpha      |
-| React Native                        | `view_model/react-native` | Alpha      |
-| Electron renderer                   | `view_model/electron`     | Alpha      |
+| 平台无关 TypeScript / Electron main | `view_model/core`         | 支持       |
+| React Native                        | `view_model/react-native` | 支持       |
+| Electron renderer                   | `view_model/electron`     | 支持       |
 | 普通 React Web / SSR                | 无                        | **不支持** |
 
 平台入口会重导出 core API。建议从 `view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `view_model/react`。
 
-## 从源码安装
-
-v0.1 Alpha 当前只从 GitHub 分发，尚未发布到 npm。先在本地构建并打包：
+## 安装
 
 ```sh
-git clone https://github.com/lwj1994/js_view_model.git
-cd js_view_model
-npm install
-npm run build
-npm pack
-```
-
-在目标 App 中安装生成的压缩包：
-
-```sh
-npm install /absolute/path/to/js_view_model/view_model-0.1.0.tgz
-```
-
-未来正式发布到 npm 后，安装方式才会变为：
-
-```sh
-npm install view_model
+npm install view_model@0.2.0
 ```
 
 React Native App 必须提供兼容的 `react` 与 `react-native` peer。Electron renderer App 必须提供 React 与自己的 renderer，Electron 由宿主 App 提供。精确版本范围以当前 `package.json` 为准。
 
 ## React Native 快速开始
 
-Spec 应定义在模块作用域，保证跨 render 的身份稳定：
+Spec 应定义在模块作用域，避免 render 期间分配，并让 builder 与 options 保持稳定：
 
 ```tsx
 import { Button, Text, View } from 'react-native';
@@ -145,7 +125,7 @@ class CounterViewModel extends StateViewModel<Readonly<{ count: number }>> {
   };
 }
 
-const counterSpec = viewModelSpec(() => new CounterViewModel(), {
+const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
   debugLabel: 'Counter',
 });
 
@@ -191,7 +171,7 @@ class WindowCounter extends StateViewModel<number> {
   };
 }
 
-const counterSpec = viewModelSpec(() => new WindowCounter());
+const counterSpec = viewModelSpec(WindowCounter, () => new WindowCounter());
 
 function App(): React.JSX.Element {
   const count = useViewModelSelector(counterSpec, (counter) => counter.state);
@@ -210,11 +190,16 @@ Electron main 不使用 hooks。使用 `ViewModelRuntime` 与 plain Binding，�
 
 ## 核心规则
 
-- 每个 `ViewModelSpec` 必须在模块作用域保持稳定。Runtime identity 是稳定的 **Spec token + key**，不是 ViewModel class 或单独的 key。
+- 优先使用 `viewModelSpec(MyViewModel, () => new MyViewModel(), options)`。在一个 Runtime 内，显式 identity 是 **ViewModel type + effective key**；省略 key 时它属于 Binding 私有。相同 type 与 key 的独立显式 Spec 共享一个 generation。
+- Spec 应在模块作用域保持稳定，避免 render 期间分配，并让 builder/options 一致。builder-only 形式作为兼容 fallback 仍然保留，其每个 Spec 都会获得独立 identity token。
 - `watch` 与 `read` 都会创建/解析实例并建立生命周期 owner；只有 `watch` 传播普通 ViewModel 通知。
-- unkeyed 实例属于 Binding 私有。key 让同一 Spec identity 在同一 Runtime 的多个 Binding 间共享。`aliveForever` 必须带显式 key。
+- 一次完整的同步通知级联共享同一 transaction。同一 callback 投递会按 Binding 去重，不同 Binding 仍分别收到 update；异步通知会开启新 transaction。
+- unkeyed 实例属于 Binding 私有。显式 key 让同一显式 ViewModel type identity 在同一 Runtime 的多个 Binding 间共享。`aliveForever` 必须带显式 key。
 - builder 与 constructor 必须纯净。计时器、IPC、原生订阅等资源从 `onCreate` 启动，并用 `addDispose` 登记清理。
 - child module 应通过不缓存的 `viewModelBinding.read/watch` getter 解析。getter 只能在 commit 后由 ViewModel action、生命周期或内部协作访问，不得从 React render 或 selector 展开。
+- 绑定到 parent 的 root Binding ownership source 会传播给它已解析的 child，后续 bind/unbind 变化也会实时同步。
+- cached/tag Binding API（`readCached`、`watchCached`、它们的 `maybe` variant，以及 `readCachesByTag`/`watchCachesByTag`）是高级的只读取查询工具。它们不会创建缺失 generation，tag 也不参与 identity。
+- Binding-owned 副作用订阅应使用 `binding.listen`、`listenState` 或 `listenStateSelect`。返回的 disposer 可提前清理；Binding dispose 或 generation recycle 也会自动移除它们。
 - `recycle` 是越过全部 owner 的 Runtime 级强制销毁。除非明确需要全局失效，否则优先使用新的显式 key。
 - 单个 hook cleanup 只移除自己的 listener；Scope Binding 会继续保有实例，直到 Scope dispose 或 generation 被 recycle。
 
