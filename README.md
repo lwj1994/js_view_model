@@ -120,6 +120,22 @@ Scopes share a Runtime, an inactive lifecycle source on either Scope pauses all
 activated ViewModels in that Runtime. Use a separate Runtime for an independently
 paused screen/window, or model focus as ordinary application state.
 
+## Do not pass managed ViewModel instances across boundaries
+
+Do not pass a resolved ViewModel instance through component props, constructor
+arguments, globals, registries, callback payloads, or ad-hoc caches. Such a
+reference is invisible to the Runtime: it does not acquire ownership, establish
+a parent dependency edge, or define when the receiver must release the instance.
+The code may appear to work while the original owner remains alive, then retain
+a stale or disposed generation after Scope disposal or `recycle`.
+
+Pass a stable `ViewModelSpec`, business key/ID, immutable DTO, or plain port
+instead. React consumers resolve the Spec from their Scope; plain hosts resolve
+it from their own Binding; parent ViewModels resolve it through a non-caching
+`viewModelBinding.read/watch` getter. If separate Bindings must receive the same
+generation, use the same Runtime with an explicit key—never instance passing as
+a substitute for managed sharing.
+
 ## Supported entry points
 
 | Environment                                 | Entry point                       | Status          |
@@ -263,6 +279,9 @@ then expose serializable DTOs/events through a narrow preload IPC API.
 - Resolve child modules through non-caching `viewModelBinding.read/watch`
   getters. Access those getters only after commit, from ViewModel actions or
   lifecycle/internal collaboration—not from React render or selectors.
+- Never pass resolved ViewModel instances between owners. Pass Specs, keys/IDs,
+  immutable DTOs, or plain ports, then let the receiver resolve through its own
+  Binding so ownership, dependency edges, recycle, and disposal remain managed.
 - Root Binding ownership sources attached to a parent propagate to its resolved
   children, including later bind/unbind changes in real time.
 - Cached/tag Binding APIs (`readCached`, `watchCached`, their `maybe` variants,

@@ -94,6 +94,12 @@ bootstrapBinding.dispose();
 
 一个容易误解的规则：lifecycle pause/resume 作用于整个 Runtime。若两个 Scope 共享 Runtime，任一 Scope 的 lifecycle source inactive 都会暂停该 Runtime 中全部已激活 ViewModel。页面或窗口需要独立暂停时，应使用独立 Runtime，或把 focus 建模为普通业务状态。
 
+## 不要跨边界传递受管理的 ViewModel 实例
+
+不要通过 component props、constructor 参数、global、registry、callback payload 或临时 cache 传递已经解析出的 ViewModel 实例。Runtime 看不到这种引用：它不会 acquire owner，不会建立 parent dependency edge，也无法知道接收方何时应 release 实例。原 owner 存活时，代码可能看似正常；Scope dispose 或 `recycle` 后，接收方却可能继续持有过期或已经 disposed 的 generation。
+
+应传递稳定的 `ViewModelSpec`、业务 key/ID、不可变 DTO 或 plain port。React consumer 从自己的 Scope 解析 Spec；plain host 从自己的 Binding 解析；parent ViewModel 通过不缓存的 `viewModelBinding.read/watch` getter 解析。不同 Binding 确实需要同一个 generation 时，应使用同一个 Runtime 与显式 key，不能把手工传递实例当作 managed sharing 的替代方案。
+
 ## 支持入口
 
 | 运行环境                            | 入口                              | 状态       |
@@ -212,6 +218,7 @@ Electron main 不使用 hooks。使用 `ViewModelRuntime` 与 plain Binding，�
 - unkeyed 实例属于 Binding 私有。显式 key 让同一显式 ViewModel type identity 在同一 Runtime 的多个 Binding 间共享。`aliveForever` 必须带显式 key。
 - builder 与 constructor 必须纯净。计时器、IPC、原生订阅等资源从 `onCreate` 启动，并用 `addDispose` 登记清理。
 - child module 应通过不缓存的 `viewModelBinding.read/watch` getter 解析。getter 只能在 commit 后由 ViewModel action、生命周期或内部协作访问，不得从 React render 或 selector 展开。
+- 禁止在 owner 之间直接传递已解析的 ViewModel 实例。应传递 Spec、key/ID、不可变 DTO 或 plain port，再由接收方通过自己的 Binding 解析，让 ownership、dependency edge、recycle 与 disposal 始终受 Runtime 管理。
 - 绑定到 parent 的 root Binding ownership source 会传播给它已解析的 child，后续 bind/unbind 变化也会实时同步。
 - cached/tag Binding API（`readCached`、`watchCached`、它们的 `maybe` variant，以及 `readCachesByTag`/`watchCachesByTag`）是高级的只读取查询工具。它们不会创建缺失 generation，tag 也不参与 identity。
 - Binding-owned 副作用订阅应使用 `binding.listen`、`listenState` 或 `listenStateSelect`。返回的 disposer 可提前清理；Binding dispose 或 generation recycle 也会自动移除它们。

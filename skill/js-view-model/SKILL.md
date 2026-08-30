@@ -83,6 +83,10 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
    - Resolve normal child modules through
      `this.viewModelBinding.read/watch(spec)` getters. Preserve the Spec instead
      of querying a cache by type.
+   - Never pass resolved ViewModel instances through props, constructors,
+     globals, registries, callback payloads, or manual caches. Pass Specs,
+     business keys/IDs, immutable DTOs, or plain ports, then resolve from the
+     receiver's own Binding.
    - Use `readCached`, `watchCached`, their `maybe` variants, and tag-batch
      queries only for advanced lookup of generations another path already
      created. They do not construct missing instances.
@@ -145,6 +149,9 @@ ViewModels when they benefit from lifecycle, composition, or notifications.
   in that Runtime. Recycle overrides all owners.
 - Do not retain child ViewModel objects in long-lived fields. Resolve through a
   getter so a new generation can be obtained after recycle.
+- An ordinary JavaScript reference to a ViewModel is not an owner or dependency
+  edge. Never use instance passing to share a managed module across owners; use
+  a stable Spec and the intended Runtime/Binding identity instead.
 
 ## Avoid invented or Flutter-only APIs
 

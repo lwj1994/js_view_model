@@ -85,6 +85,14 @@ runtime.dispose();
 
 root Binding 保活 `SyncViewModel`。`authorizationHeader` 首次访问 `session` 时，parent 的 dependency Binding 会保活 `SessionViewModel`。移除这条 parent 边之前，child 不会被自动 release。
 
+## 不要传递受管理实例
+
+已经解析出的 ViewModel object 不是依赖声明。不要把它传给另一个 component、module、owner、constructor、registry 或 callback payload。Runtime 无法观察普通 JavaScript 引用，因此这种传递不会 acquire generation、创建 parent edge、传播 root owner source，也不会登记 release 边界。
+
+原 Binding 存活时，这种写法可能看似安全；真正的问题发生在生命周期边界。原 owner dispose 或 generation 被强制 recycle 后，接收方会持有过期且已 disposed 的 object；长生命周期的手工 cache 还可能让引用越过预期 Scope。
+
+应传递稳定 Spec 与所需业务 key/ID，再由接收方从自己的 Binding 解析。如果接收方只需要数据或行为，应传递不可变 DTO、plain function 或窄接口 port。不同 Binding 确实要共享一个 generation 时，应通过同一个 Runtime 与显式 key 表达。
+
 ## 基于 getter 解析 child
 
 使用 getter，让每次访问都解析当前 generation：
