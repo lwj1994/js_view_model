@@ -1,18 +1,82 @@
-# view_model
+# view_model：状态管理、依赖注入与模块架构
 
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 [English](./README.md)
 
-面向 **React Native** 与 **Electron** 的应用级依赖注入、功能模块组合、状态管理与自动生命周期框架。
+**不只是状态管理。view_model 同时是一套面向 React Native 与 Electron 的 TypeScript 应用级依赖注入、功能模块组合与自动生命周期管理架构。**
 
 npm 包名为 [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model)。
 
 `view_model` 不只管理页面状态。功能、repository、service、coordinator、设备连接或领域能力都可以成为受管理的 ViewModel。模块通过 `viewModelBinding` 按需解析彼此，在明确的 `ViewModelRuntime` 内共享实例，并在最后一个 owner 离开后释放资源。
 
+```sh
+npm install @lwjlol/view_model@0.2.0
+```
+
+## Skill 安装
+
+```sh
+npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
+```
+
+该 skill 用于实现与审查 `view_model` 架构，源码位于 [`skill/js-view-model`](./skill/js-view-model/SKILL.md)。
+
 > [!IMPORTANT]
 > 本包只支持 React Native 与 Electron App，不支持普通 React Web、SSR、React Server Components 或通用 DOM 应用。
+
+---
+
+## 核心目录
+
+- [架构概览](#架构概览)
+- [两个核心角色](#两个核心角色)
+- [应用级 DI](#应用级-di不只是-ui-store)
+- [为什么 React 需要 Scope](#为什么-react-需要-scope)
+- [ViewModel 间依赖](#viewmodel-间依赖)
+- [支持入口](#支持入口)
+- [快速开始](#快速开始)
+- [核心规则](#核心规则)
+- [文档](#文档)
+
+---
+
+## 架构概览
+
+TypeScript 实现与 Flutter 包保持相同的受管理模块方向，同时用显式 Runtime 表达 JavaScript realm 边界：
+
+```text
+Application / Consumer Layer
+├── React Native ViewModelScope + hooks
+├── Electron renderer ViewModelScope + hooks
+└── Plain TypeScript host (bootstrap, service, Electron main, test)
+                 │ read / watch / listen
+                 ▼
+ViewModelRuntime + ViewModelBinding
+├── Runtime: identity, keyed sharing, dependency graph, pause state
+├── Binding: owner, resolver, notification adapter
+└── Scope: React adapter that owns one stable Binding
+                 │ acquire / release
+                 ▼
+Managed ViewModel Generations
+└── Per-generation dependency Binding → lazily resolved children
+```
+
+核心机制：
+
+1. `watch(spec)` 与 `read(spec)` 都会解析并拥有 generation；只有 `watch` 传播普通 ViewModel 通知。
+2. Runtime 是单个 JavaScript realm 内的应用 DI 与共享边界；Binding 表示该 Runtime 中的一个 owner。
+3. unkeyed identity 对 Binding 私有。显式 ViewModel type 与 key 可在同一 Runtime 的多个 Binding 间共享一个 generation。
+4. 每个 parent generation 按需拥有 dependency Binding。解析 child 会建立受管理的 parent edge，并传播当前 root owner source。
+5. 最后一条 owner edge 离开后，非 `aliveForever` generation 自动 dispose；`recycle` 会越过全部 owner 强制销毁。
+
+## 两个核心角色
+
+`ViewModel` 与 `StateViewModel<TState>` 是受管理侧：应用模块获得通知、依赖访问、生命周期 hook 与注册式 cleanup。`ViewModelRuntime` 与 `ViewModelBinding` 是管理侧：它们解析 identity、持有 generation、传播 update 并释放资源。
+
+React `ViewModelScope` 只是管理侧的平台 adapter，不会让本库退化为 UI-only store；plain TypeScript host 通过 `runtime.createBinding()` 使用同一个 Runtime。
 
 ## 应用级 DI，不只是 UI Store
 
@@ -50,7 +114,6 @@ class SessionViewModel extends StateViewModel<SessionState> {
 
 export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'application-session',
-  aliveForever: true,
   debugLabel: 'Session',
 });
 
@@ -67,16 +130,18 @@ class OrdersRepository extends ViewModel {
 export const ordersRepositorySpec = viewModelSpec(OrdersRepository, () => new OrdersRepository());
 
 export const appRuntime = new ViewModelRuntime();
-const bootstrapBinding = appRuntime.createBinding({ id: 'application-bootstrap' });
+const applicationBinding = appRuntime.createBinding({ id: 'application' });
 
-await bootstrapBinding.read(ordersRepositorySpec).load();
+await applicationBinding.read(ordersRepositorySpec).load();
 
-// Release this host when bootstrap ownership ends. Dispose the application
-// runtime at the real process/application shutdown boundary.
-bootstrapBinding.dispose();
+// Release the application owner before disposing the Runtime at shutdown.
+export function shutdownApplication(): void {
+  applicationBinding.dispose();
+  appRuntime.dispose();
+}
 ```
 
-示例使用 `aliveForever`，只是为了让 session 跨越一次有意的零 owner 交接。若某个 application Binding 始终拥有 session，应保留 key 以便跨 Binding 共享，同时省略 `aliveForever`。
+长期存在的 application Binding 是真实 owner，因此不需要 `aliveForever`。session 的显式 key 只用于让独立的 plain 与 React Binding 有意共享该 generation。只有明确需要零 owner retention 时才使用 `aliveForever`。
 
 同一个 `appRuntime` 可注入 React Native 或 Electron renderer 的 `ViewModelScope`。相同的显式 ViewModel type 与 key 随后能在 plain host 与 React Scope 间解析到同一 generation。这里的“应用级”严格指单个 JavaScript realm 内的显式 Runtime；ViewModel 对象不会跨 Electron 进程共享。
 
@@ -94,7 +159,11 @@ bootstrapBinding.dispose();
 
 一个容易误解的规则：lifecycle pause/resume 作用于整个 Runtime。若两个 Scope 共享 Runtime，任一 Scope 的 lifecycle source inactive 都会暂停该 Runtime 中全部已激活 ViewModel。页面或窗口需要独立暂停时，应使用独立 Runtime，或把 focus 建模为普通业务状态。
 
-## 不要跨边界传递受管理的 ViewModel 实例
+## ViewModel 间依赖
+
+受管理 child module 应通过 parent 上的不缓存 getter 解析。getter 声明本身不会创建对象；attach 后访问 getter 才会调用 `viewModelBinding.read/watch(spec)`、建立 parent-owned lifecycle edge，并能在显式 `recycle` 后解析新的 generation。
+
+### 让 ViewModel 实例留在自己的 Binding 边界内
 
 不要通过 component props、constructor 参数、global、registry、callback payload 或临时 cache 传递已经解析出的 ViewModel 实例。Runtime 看不到这种引用：它不会 acquire owner，不会建立 parent dependency edge，也无法知道接收方何时应 release 实例。原 owner 存活时，代码可能看似正常；Scope dispose 或 `recycle` 后，接收方却可能继续持有过期或已经 disposed 的 generation。
 
@@ -111,15 +180,11 @@ bootstrapBinding.dispose();
 
 平台入口会重导出 core API。建议从 `@lwjlol/view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `@lwjlol/view_model/react`。
 
-## 安装
-
-```sh
-npm install @lwjlol/view_model@0.2.0
-```
-
 React Native App 必须提供兼容的 `react` 与 `react-native` peer。Electron renderer App 必须提供 React 与自己的 renderer，Electron 由宿主 App 提供。精确版本范围以当前 `package.json` 为准。
 
-## React Native 快速开始
+## 快速开始
+
+### React Native
 
 Spec 应定义在模块作用域，避免 render 期间分配，并让 builder 与 options 保持稳定：
 
@@ -169,7 +234,7 @@ export default function App(): React.JSX.Element {
 
 默认 React Native Scope 把 `AppState === 'active'` 映射为 resume，其他所有状态映射为 pause。
 
-## Electron renderer 快速开始
+### Electron renderer
 
 每个 renderer/window 通常应拥有自己的顶层 Scope 与 Runtime。默认 lifecycle 只有在窗口 focus 且 document 可见时才视为 active：
 
@@ -241,16 +306,6 @@ Electron main 不使用 hooks。使用 `ViewModelRuntime` 与 plain Binding，�
 - [与 Flutter `view_model` 的差异](./docs/zh/flutter-comparison.md)
 
 英文与中文模块保持一一对应，并在每篇文档首行互链。
-
-## 安装 Codex Skill
-
-仓库包含用于实现与审查 `view_model` 架构的可复用 skill：
-
-```sh
-npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
-```
-
-源码位于 [`skill/js-view-model`](./skill/js-view-model/SKILL.md)。
 
 ## License
 
