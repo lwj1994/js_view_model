@@ -266,6 +266,18 @@ private to each Binding even when Bindings share a Runtime.
 Pass Specs or ordinary ports through constructors, but resolve managed child
 instances only after the parent is attached:
 
+Never pass a resolved ViewModel object as a dependency through props,
+constructors, globals, registries, callback payloads, or manual caches. An
+ordinary JavaScript reference is invisible to the Runtime and therefore does
+not acquire ownership, create a parent edge, propagate root owner sources, or
+define a release boundary. The receiver can retain a stale disposed generation
+after the original owner is disposed or the generation is recycled.
+
+Pass a stable Spec plus any business key/ID and resolve it from the receiver's
+own Binding. Pass immutable DTOs, plain functions, or narrow ports when managed
+identity is unnecessary. When separate Bindings intentionally share a managed
+generation, use the same Runtime and an explicit key.
+
 ```ts
 class CheckoutViewModel extends ViewModel {
   private get cart(): CartViewModel {

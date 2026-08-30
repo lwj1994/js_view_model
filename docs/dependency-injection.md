@@ -85,6 +85,25 @@ Passing a Spec into a constructor is safe: a Spec is an inert declaration. Resol
 
 The root Binding retains `SyncViewModel`. When `authorizationHeader` first accesses `session`, the parent's dependency Binding retains `SessionViewModel`. The child cannot be automatically released before that parent edge is removed.
 
+## Do not pass managed instances
+
+A resolved ViewModel object is not a dependency declaration. Do not pass it to
+another component, module, owner, constructor, registry, or callback payload.
+The Runtime cannot observe an ordinary JavaScript reference, so that transfer
+does not acquire the generation, create a parent edge, propagate root owner
+sources, or register a release boundary.
+
+This pattern can appear safe while the original Binding remains alive. It fails
+at the lifecycle boundary: disposing the original owner or force-recycling the
+generation leaves the receiver with a stale disposed object, while long-lived
+manual caches can retain references beyond their intended Scope.
+
+Pass the stable Spec and any business key/ID instead, then resolve from the
+receiver's own Binding. Pass immutable DTOs, plain functions, or narrow ports
+when the receiver needs data or behavior rather than a managed dependency. If
+separate Bindings intentionally share one generation, express that through the
+same Runtime and an explicit key.
+
 ## Getter-based child resolution
 
 Use a getter so every access resolves the current generation:
