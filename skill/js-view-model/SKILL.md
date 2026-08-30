@@ -1,172 +1,268 @@
 ---
 name: js-view-model
-description: Build, refactor, review, debug, or test TypeScript application modules with the view_model package for React Native and Electron. Use for application-wide dependency injection, ViewModel and StateViewModel design, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, read/watch/selector and advanced cached/tag choices, Binding-owned listeners, parent-child module composition, automatic lifecycle, StrictMode, pause/resume, aliveForever, recycle, or platform integration.
+description: Build or refactor React Native and Electron functional modules and state management with @lwjlol/view_model, including application-wide dependency injection, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, watch/read and cached lookup semantics, lifecycle, pause-resume, testing, and platform integration.
 ---
 
-# JS ViewModel
+# JS ViewModel Skill
 
-Treat `view_model` as an application-wide module and dependency-injection
-runtime, not as a UI-only state store. Model features, services, repositories,
-coordinators, device connections, and domain capabilities as managed
-ViewModels when they benefit from lifecycle, composition, or notifications.
+Use this skill when tasks involve `@lwjlol/view_model` architecture,
+migration, bug fixing, performance tuning, review, or feature implementation
+for React Native and Electron applications.
 
-## Load the right references
+## Source of truth
 
-- Read [references/core.md](references/core.md) for every implementation,
-  refactor, review, or debugging task.
-- Also read [references/react-native.md](references/react-native.md) for React
-  Native Scope, hooks, AppState, or navigation tasks.
-- Also read [references/electron.md](references/electron.md) for Electron
-  renderer, preload, main, window lifecycle, or IPC tasks.
-- Read [references/testing.md](references/testing.md) when adding tests,
-  diagnosing lifecycle timing, or validating package output.
-- When working inside the upstream repository, treat `src/`, `tests/`, and the
-  matching language under `docs/` as newer truth if they conflict with these
+- Core architecture and API: [references/core.md](references/core.md)
+- React Native integration: [references/react-native.md](references/react-native.md)
+- Electron integration: [references/electron.md](references/electron.md)
+- Testing and package validation: [references/testing.md](references/testing.md)
+- When working inside the upstream repository, `src/`, `tests/`, and the
+  matching language under `docs/` are newer truth if they conflict with the
   bundled references.
 
-## Follow this workflow
+## Reference loading policy
 
-1. Identify the host and realm.
+- For implementation, refactor, review, or debugging tasks, read
+  [references/core.md](references/core.md) first.
+- Also read the React Native reference for Scope, hooks, AppState, or
+  navigation work.
+- Also read the Electron reference for renderer, preload, main, window
+  lifecycle, or IPC work.
+- Read the testing reference when adding tests, diagnosing lifecycle timing,
+  or validating package output.
+- For a narrow API clarification, use this summary first and open the relevant
+  reference when detail affects the answer.
+
+## Trigger phrases
+
+Use this skill for requests such as:
+
+- “用 js view_model 写/改状态管理”
+- “全局 DI / application Runtime 怎么设计”
+- “watch/read 有什么区别”
+- “ViewModelSpec 怎么共享或隔离实例”
+- “ViewModel 之间如何依赖注入”
+- “Scope、Binding、生命周期、pause/resume、recycle”
+- “React Native 或 Electron 的 view_model 集成”
+
+## Primary resolution rule (must follow)
+
+- **`watch(spec)` and `read(spec)` are the primary entry points.** Use a
+  stable module-level `ViewModelSpec` for normal React access, plain Binding
+  hosts, tests, and ViewModel-to-ViewModel dependencies.
+- Choose `watch(spec)` when ordinary ViewModel notifications should update the
+  Binding owner. Choose `read(spec)` for lifecycle-owned imperative access
+  without that propagation.
+- Cached/tag APIs are not an alternative dependency style. They are advanced,
+  lookup-only escape hatches for generations already created by another path.
+  Do not suggest them by default.
+
+## Core model (must stay accurate)
+
+- **Every functional module can be a ViewModel.** UI state, features, services,
+  repositories, coordinators, device connections, and domain capabilities can
+  all use managed lifecycle, composition, and notifications.
+- **The Runtime is application-wide DI, not a UI store.** One
+  `ViewModelRuntime` owns identity, generations, dependency edges, and pause
+  state inside one JavaScript realm. It never spans Electron processes.
+- **A Binding is an owner and resolver.** Plain TypeScript hosts create a
+  Binding directly. A platform `ViewModelScope` is only the React adapter that
+  owns one stable Binding and maps commit/unmount to acquire/release.
+- **ViewModels inject one another through Specs.** Resolve managed children
+  with non-caching `this.viewModelBinding.read/watch(spec)` getters after
+  attachment. Each parent generation owns a stable dependency Binding.
+- **Never pass resolved ViewModel instances between lifecycle owners.** A raw
+  JavaScript reference establishes no owner or dependency edge and can outlive
+  the Binding that resolved it. Give each owner a stable Spec; pass plain data,
+  IDs, immutable value objects, narrow callbacks, or ports across other
+  boundaries.
+- **Prefer managed instances over hidden singletons.** Keep normal modules
+  unkeyed and non-`aliveForever` unless sharing or zero-owner retention is an
+  explicit requirement.
+- Both `read` and `watch` resolve and own a generation. Only `watch` propagates
+  ordinary ViewModel notifications to the Binding.
+- Unkeyed identity is private to the resolving Binding. For an explicit Spec,
+  an explicit ViewModel type plus effective key defines identity inside one
+  Runtime. Builder-only Specs use independent fallback tokens.
+- A key enables cross-Binding sharing but does not retain a generation. Every
+  `aliveForever` Spec must have an explicit key.
+- Root Binding owner sources propagate through resolved child graphs in real
+  time. Direct and multiple-parent paths are source-aware and independently
+  counted.
+- One synchronous notification cascade shares a transaction and deduplicates
+  the same callback per Binding. An asynchronous notification starts a new
+  transaction.
+
+## Feature-module architecture
+
+Treat `ViewModel` as the reusable unit of application functionality rather
+than a class reserved for one screen. Declare stable Specs, then compose larger
+modules through getter-based DI:
+
+```ts
+class CheckoutViewModel extends ViewModel {
+  private get cart(): CartViewModel {
+    return this.viewModelBinding.read(cartSpec);
+  }
+
+  private get pricing(): PricingViewModel {
+    return this.viewModelBinding.read(pricingSpec);
+  }
+
+  public async submit(): Promise<void> {
+    await this.pricing.validate(this.cart.items);
+  }
+}
+
+export const checkoutSpec = viewModelSpec(CheckoutViewModel, () => new CheckoutViewModel());
+```
+
+- A getter declaration creates nothing. Its first post-attachment access
+  resolves the child and establishes a parent-owned lifecycle edge.
+- Prefer getters over long-lived fields or manual caches so the next
+  access can resolve a fresh generation after explicit `recycle`.
+- Use parent `read` for imperative collaboration. Use parent `watch` only when
+  child notifications should invoke `onDependencyNotify(child)` and notify the
+  parent.
+- Keep normal modules unkeyed for private per-Binding graphs. When independent
+  owners intentionally share one generation, let every owner resolve the same
+  explicit type and key from the same Runtime.
+- The resulting lifetime is the union of managed owner paths. Do not use
+  instance passing or `aliveForever` as a substitute for keyed, Binding-owned
+  sharing.
+
+## Implementation workflow
+
+1. Choose the host and Runtime boundary.
    - Use `@lwjlol/view_model/core` in plain TypeScript and Electron main.
-   - Use `@lwjlol/view_model/react-native` for RN Scope/hooks.
+   - Use `@lwjlol/view_model/react-native` for React Native Scope/hooks.
    - Use `@lwjlol/view_model/electron` for Electron renderer Scope/hooks.
-   - Never generate a `@lwjlol/view_model/react` import or claim Web/SSR/RSC support.
+   - Never generate `@lwjlol/view_model/react` or claim Web/SSR/RSC support.
+   - Use one application Runtime for one sharing graph; use separate Runtimes
+     for hard isolation, independent pause state, tests, or separate realms.
 
-2. Choose the Runtime boundary first.
-   - Create one application Runtime when modules should participate in the
-     same DI and keyed-sharing graph.
-   - Use separate Runtimes for hard isolation, independent pause state, tests,
-     or separate Electron renderer realms.
-   - Keep “global” precise: it means one explicit Runtime in one JavaScript
-     realm, never an implicit process-spanning singleton.
-
-3. Model functional modules.
-   - Extend `ViewModel` for mutable fields or command/service modules.
+2. Choose the ViewModel style.
+   - Extend `ViewModel` for commands, services, repositories, coordinators, or
+     explicitly notified mutable fields.
    - Extend `StateViewModel<TState>` for immutable state snapshots and state
      diffs.
-   - Keep network clients and other external dependencies as ordinary
-     constructor inputs when their lifecycle is not managed by this runtime.
-   - Make a service/repository/coordinator a ViewModel when managed lifetime,
-     lazy composition, sharing, or notifications are useful.
+   - Keep unmanaged network clients and other plain external dependencies as
+     ordinary constructor ports.
 
-4. Declare stable Specs at module scope.
-   - Prefer `viewModelSpec(X, () => new X(), options)` so the class is an
-     explicit runtime identity.
-   - Inside one Runtime, explicit identity is ViewModel type plus effective
-     key. An omitted key is private to one Binding; an explicit key shares
-     across Bindings.
-   - Independent explicit Specs with the same type and key share. Keep one
-     module-level declaration anyway so builder and options cannot diverge.
-   - Treat `viewModelSpec(() => new X(), options)` as a compatibility fallback:
-     every builder-only Spec receives an independent token.
-   - Use `baseSpec.withKey(key)` for variants that preserve the base explicit
-     type identity or builder-only fallback token.
-   - Keep ordinary modules unkeyed unless cross-Binding sharing or multiple
-     variants are required.
-   - Treat `tag` as lookup metadata, never as part of identity.
-   - Give every `aliveForever` Spec an explicit key.
+3. Declare a stable `ViewModelSpec`.
+   - Prefer `viewModelSpec(X, () => new X(), options)` at module scope.
+   - Use no key for ordinary private modules.
+   - Use an explicit key for cross-Binding sharing or multiple variants.
+   - Use `baseSpec.withKey(key)` when deriving a keyed variant that preserves
+     the base identity.
+   - Treat `tag` as lookup metadata, never identity.
+   - Treat the builder-only overload as a compatibility fallback with an
+     independent token.
 
-5. Select an owner adapter.
-   - In plain hosts, create a Binding with `runtime.createBinding()` and dispose
-     it when that host's ownership ends.
-   - In React, use a platform `ViewModelScope`. Scope is only the React owner
-     adapter that provides a Runtime/Binding and maps commit/unmount to
-     ownership; it is not the DI system itself.
-   - Inject an application Runtime into Scope when React and non-React hosts
-     should share keyed modules. The caller then owns Runtime disposal.
+4. Integrate the owner.
+   - Plain host: `runtime.createBinding()` and explicit `binding.dispose()`.
+   - React host: a platform `ViewModelScope` and platform hooks.
+   - Inject an external application Runtime into Scope only when React and
+     non-React owners should share keyed modules. The caller owns its disposal.
 
-6. Resolve dependencies and UI access correctly.
-   - Use `binding.read(spec)` for owned imperative access without ordinary
-     update propagation.
-   - Use `binding.watch(spec)` when a plain owner or parent should react to
-     ordinary ViewModel notifications.
-   - Resolve normal child modules through
-     `this.viewModelBinding.read/watch(spec)` getters. Preserve the Spec instead
-     of querying a cache by type.
-   - Never pass resolved ViewModel instances through props, constructors,
-     globals, registries, callback payloads, or manual caches. Pass Specs,
-     business keys/IDs, immutable DTOs, or plain ports, then resolve from the
-     receiver's own Binding.
-   - Use `readCached`, `watchCached`, their `maybe` variants, and tag-batch
-     queries only for advanced lookup of generations another path already
-     created. They do not construct missing instances.
-   - Use Binding-owned `listen`, `listenState`, or `listenStateSelect` for
-     side-effect subscriptions that must clean up with Binding or generation
-     disposal. Keep the returned disposer when earlier cleanup is useful.
-   - Call dependency getters only from actions, `onCreate`, lifecycle hooks,
-     or internal collaboration after attach/commit.
-   - In React, choose `useViewModel`, `useReadViewModel`, or
-     `useViewModelSelector`; never call a dependency getter from render or a
+5. Choose the access API.
+   - `watch(spec)`: resolve, own, and propagate ordinary notifications.
+   - `read(spec)`: resolve and own without ordinary notification propagation.
+   - `listen`, `listenState`, `listenStateSelect`: Binding-owned side-effect
+     listeners with automatic cleanup and an optional early disposer.
+   - `readCached`/`watchCached`, `maybe*`, and tag-batch APIs: advanced
+     lookup-only access; a miss never runs a builder.
+   - In React use `useViewModel`, `useReadViewModel`, or
+     `useViewModelSelector`. Never expand dependency getters from render or a
      selector.
 
-7. Place side effects at the correct lifecycle phase.
-   - Keep Spec builders and constructors pure.
-   - Start timers, IPC, sockets, native subscriptions, and similar resources
-     in `onCreate`.
-   - Register cleanup through `addDispose` and keep lifecycle hooks synchronous.
-   - Implement `onPause`/`onResume` only for resources that actually need
-     pausing; Runtime pause does not stop business logic automatically.
+6. Handle dependencies and sharing.
+   - Pass Specs or ordinary ports through constructors, not resolved managed
+     instances.
+   - Resolve child ViewModels through non-caching getters after attach/commit.
+   - Use the same Runtime plus explicit type/key identity for intentional
+     cross-Binding sharing.
+   - Keep the dependency graph acyclic.
 
-8. Validate semantics, not only types.
-   - Test identity, ownership release, dependency propagation, pause tokens,
-     recycle, cached lookup misses, listener cleanup, and resource cleanup where
-     they affect the feature.
-   - Verify a complete synchronous notification cascade deduplicates the same
-     callback per Binding while different Bindings still receive updates.
+7. Place side effects in lifecycle.
+   - Keep builders and constructors pure; React may abandon prepared objects.
+   - Start timers, IPC, sockets, and native subscriptions in `onCreate`.
+   - Register cleanup with `addDispose`; lifecycle hooks stay synchronous.
+   - Use `onPause`/`onResume` only for resources that need it. Runtime pause
+     does not prevent business actions or direct subscriptions.
+
+8. Validate semantics.
+   - Test identity, ownership release, parent-source propagation, synchronous
+     transaction deduplication, listener cleanup, pause tokens, and recycle
+     where they affect the feature.
    - Flush disposal microtasks before asserting automatic destruction.
-   - Run the repository's serial test and package checks.
+   - Run the repository's serial tests, build, package checks, and audit.
 
-## Preserve these invariants
+## Do/Don't checklist
 
-- Both `read` and `watch` create/resolve and own an instance. `read` does not
-  mean unowned; it only ignores ordinary ViewModel notifications.
-- An unkeyed instance is private to the resolving Binding. A parent generation
-  owns a private dependency Binding for its unkeyed children.
-- Independently created explicit Specs share when their ViewModel type and key
-  match. Independently created builder-only Specs retain separate fallback
-  tokens and do not share.
-- Root Binding owner sources are mirrored through resolved child graphs. Later
-  root bind/unbind changes propagate in real time, with source-aware reference
-  counting across direct and multiple-parent paths.
-- One entire synchronous notification cascade shares a transaction. The same
-  callback is deduplicated per Binding; asynchronous notifications start a new
-  transaction.
-- `update(action, mutation)` only supplies an action context. It does not call
-  `notifyListeners`; ordinary `ViewModel` mutations must notify explicitly.
-- `StateViewModel` compares state with `Object.is` by default. Replace immutable
-  snapshots or pass a deliberate equality function.
-- Parent `watch` propagation already invokes `onDependencyNotify(child)` and
-  notifies the parent. Do not unconditionally notify a second time in that hook.
-- A single React hook cleanup removes its listener but does not release the
-  Scope Binding's owner entry. Scope disposal or recycle ends that ownership.
-- Binding-owned `listen*` subscriptions differ from hook listeners: Binding
-  disposal, generation disposal/recycle, or their returned disposer removes
-  them automatically.
-- Pause/resume is Runtime-wide and token-aggregated. A nested Scope sharing a
-  Runtime cannot pause only its own instances.
+Do:
+
+- Use stable `watch(spec)` / `read(spec)` resolution as the default.
+- Model application features as collaborating ViewModel modules when managed
+  lifetime, DI, reuse, or notifications are useful.
+- Default normal Specs to no key and no `aliveForever`.
+- Expose children through non-caching `viewModelBinding.read/watch` getters.
+- Give every lifecycle owner its own managed resolution path.
+- Use an explicit key when cross-Binding sharing is a real requirement.
+- Dispose plain Bindings and externally owned Runtimes explicitly.
+- Keep code comments in English.
+
+Don't:
+
+- Pass resolved ViewModel instances through props, constructors, route or IPC
+  payloads, globals, registries, callbacks, service fields, or manual caches.
+- Introduce a hidden singleton or service locator for ViewModel modules by
+  default.
+- Claim `read` is unowned; it still participates in lifecycle ownership.
+- Cache a child ViewModel object in a long-lived field.
+- Use cached/tag APIs as normal dependency resolution or expect them to create
+  a missing generation.
+- Overuse `aliveForever` for screen- or owner-scoped state.
+- Use `recycle` for local updates; it force-disposes a generation for every
+  owner.
+- Attach a navigation lifecycle to a nested Scope that shares a Runtime when
+  only that page should pause. Pause is Runtime-wide.
+
+## Important semantic details
+
+- `update(action, mutation)` supplies debug action context but does not call
+  `notifyListeners`; ordinary `ViewModel` mutations notify explicitly.
+- `StateViewModel` uses `Object.is` by default. Replace immutable snapshots or
+  provide a deliberate equality function.
+- Parent `watch` already propagates a child notification after
+  `onDependencyNotify(child)`; do not notify the same event again
+  unconditionally.
+- One React hook cleanup removes only its listener. The Scope Binding retains
+  its owner entry until Scope disposal or recycle.
+- Binding-owned `listen*` subscriptions are removed by their disposer, Binding
+  disposal, or generation disposal/recycle. Direct `subscribe*` listeners are
+  manually owned.
 - `runtime.recycle(instance)` force-disposes one generation.
-  `runtime.recycle(unkeyedSpec)` can dispose every matching private generation
-  in that Runtime. Recycle overrides all owners.
-- Do not retain child ViewModel objects in long-lived fields. Resolve through a
-  getter so a new generation can be obtained after recycle.
-- An ordinary JavaScript reference to a ViewModel is not an owner or dependency
-  edge. Never use instance passing to share a managed module across owners; use
-  a stable Spec and the intended Runtime/Binding identity instead.
+  `runtime.recycle(unkeyedSpec)` can match one private generation per Binding.
+- Pause/resume is Runtime-wide and token-aggregated.
 
 ## Avoid invented or Flutter-only APIs
 
-Do not generate `ViewModelSpec.argN`, spec proxy, code-generation annotations,
-`ChangeNotifierViewModel`, global
-`ViewModel.initialize/reset/config`, DevTools integration, route/ticker pause
-providers, or widget mixins. They belong to other implementations and are not
-part of this TypeScript package.
+Do not generate `ViewModelSpec.argN`, spec proxy/override APIs, annotations or
+code generation, `ChangeNotifierViewModel`, global
+`ViewModel.initialize/reset/config`, Flutter route/ticker pause providers,
+DevTools integration, or widget mixins. They are not part of this TypeScript
+package.
 
-## Produce maintainable output
+## Response pattern for implementation requests
 
-- Keep code comments in English.
-- Explain the Runtime and owner boundary when architecture is not obvious.
-- Prefer a stable, explicit composition root over hidden global service
-  locator calls.
-- State the blast radius before suggesting `aliveForever` or `recycle`.
-- Include cleanup and Runtime ownership in examples, not only the happy-path
-  read/watch call.
+- Default examples to stable Specs with `watch` or `read`; show cached lookup
+  only for an explicit advanced cache-query requirement.
+- Present application architecture as collaborating, managed ViewModel modules
+  rather than a collection of UI stores or global singletons.
+- Prefer complete snippets with imports, ViewModel class, Spec declaration,
+  owner usage, and disposal/setup notes.
+- State why `watch` or `read` was chosen.
+- When introducing sharing, show the explicit key, Runtime boundary, and
+  lifecycle consequences.
+- Explain Runtime and owner boundaries when they are not obvious, and state the
+  blast radius before suggesting `aliveForever` or `recycle`.

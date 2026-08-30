@@ -1,13 +1,14 @@
-# view_model
+# view_model — State Management, Dependency Injection, and Module Architecture
 
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 [简体中文](./README_ZH.md)
 
-Application-wide dependency injection, functional-module composition, state
-management, and automatic lifecycle management for **React Native** and
-**Electron**.
+**More than state management: view_model is a TypeScript architecture for
+application-wide dependency injection, functional-module composition, and
+automatic lifecycle management in React Native and Electron.**
 
 Published on npm as [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model).
 
@@ -17,10 +18,85 @@ ViewModels. They resolve one another lazily through `viewModelBinding`, share
 instances within an explicit `ViewModelRuntime`, and release resources when
 their final owner leaves.
 
+```sh
+npm install @lwjlol/view_model@0.2.0
+```
+
+## Install Skill
+
+```sh
+npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
+```
+
+The skill is designed for implementation and architecture review. Its source
+is in [`skill/js-view-model`](./skill/js-view-model/SKILL.md).
+
 > [!IMPORTANT]
 > This package supports React Native and Electron applications only. It does
 > not support ordinary React Web, SSR, React Server Components, or general DOM
 > applications.
+
+---
+
+## Table of Contents
+
+- [Architecture Overview](#architecture-overview)
+- [Two Core Roles](#two-core-roles)
+- [Application-wide DI](#application-wide-di-not-a-ui-only-store)
+- [Why React Needs a Scope](#why-react-needs-a-scope)
+- [ViewModel-to-ViewModel Dependencies](#viewmodel-to-viewmodel-dependencies)
+- [Supported Entry Points](#supported-entry-points)
+- [Getting Started](#getting-started)
+- [Core Rules](#core-rules)
+- [Documentation](#documentation)
+
+---
+
+## Architecture Overview
+
+The TypeScript implementation follows the same managed-module direction as
+the Flutter package, with explicit Runtime boundaries for JavaScript realms:
+
+```text
+Application / Consumer Layer
+├── React Native ViewModelScope + hooks
+├── Electron renderer ViewModelScope + hooks
+└── Plain TypeScript host (bootstrap, service, Electron main, test)
+                 │ read / watch / listen
+                 ▼
+ViewModelRuntime + ViewModelBinding
+├── Runtime: identity, keyed sharing, dependency graph, pause state
+├── Binding: owner, resolver, notification adapter
+└── Scope: React adapter that owns one stable Binding
+                 │ acquire / release
+                 ▼
+Managed ViewModel Generations
+└── Per-generation dependency Binding → lazily resolved children
+```
+
+Key mechanics:
+
+1. Both `watch(spec)` and `read(spec)` resolve and own a generation; only
+   `watch` propagates ordinary ViewModel notifications.
+2. A Runtime is the application DI and sharing boundary inside one JavaScript
+   realm. A Binding represents one owner inside that Runtime.
+3. Unkeyed identity is private to a Binding. An explicit ViewModel type and key
+   share one generation across Bindings in the same Runtime.
+4. Every parent generation lazily owns a dependency Binding. Resolving a child
+   establishes a managed parent edge and propagates current root owner sources.
+5. When the last owner edge leaves, a non-`aliveForever` generation is disposed
+   automatically. `recycle` force-disposes it regardless of owners.
+
+## Two Core Roles
+
+`ViewModel` and `StateViewModel<TState>` are the managed side: application
+modules gain notifications, dependency access, lifecycle hooks, and registered
+cleanup. `ViewModelRuntime` and `ViewModelBinding` are the managing side: they
+resolve identities, own generations, propagate updates, and release resources.
+
+React `ViewModelScope` is a thin platform adapter over that managing side. It
+does not turn the library into a UI-only store; plain TypeScript hosts use the
+same Runtime through `runtime.createBinding()`.
 
 ## Application-wide DI, not a UI-only store
 
@@ -60,7 +136,6 @@ class SessionViewModel extends StateViewModel<SessionState> {
 
 export const sessionSpec = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
   key: 'application-session',
-  aliveForever: true,
   debugLabel: 'Session',
 });
 
@@ -77,19 +152,21 @@ class OrdersRepository extends ViewModel {
 export const ordersRepositorySpec = viewModelSpec(OrdersRepository, () => new OrdersRepository());
 
 export const appRuntime = new ViewModelRuntime();
-const bootstrapBinding = appRuntime.createBinding({ id: 'application-bootstrap' });
+const applicationBinding = appRuntime.createBinding({ id: 'application' });
 
-await bootstrapBinding.read(ordersRepositorySpec).load();
+await applicationBinding.read(ordersRepositorySpec).load();
 
-// Release this host when bootstrap ownership ends. Dispose the application
-// runtime at the real process/application shutdown boundary.
-bootstrapBinding.dispose();
+// Release the application owner before disposing the Runtime at shutdown.
+export function shutdownApplication(): void {
+  applicationBinding.dispose();
+  appRuntime.dispose();
+}
 ```
 
-This example uses `aliveForever` only to preserve the session across an
-intentional zero-owner handoff. If an application Binding continuously owns the
-session, keep the Spec keyed for cross-Binding sharing and omit
-`aliveForever`.
+The long-lived application Binding is a real owner, so `aliveForever` is not
+needed. The explicit session key exists only because independent plain and
+React Bindings may intentionally share that generation. Use `aliveForever`
+only for deliberate zero-owner retention.
 
 The same `appRuntime` can be injected into a React Native or Electron renderer
 `ViewModelScope`. The same explicit ViewModel type and key then resolve to one
@@ -120,7 +197,14 @@ Scopes share a Runtime, an inactive lifecycle source on either Scope pauses all
 activated ViewModels in that Runtime. Use a separate Runtime for an independently
 paused screen/window, or model focus as ordinary application state.
 
-## Do not pass managed ViewModel instances across boundaries
+## ViewModel-to-ViewModel Dependencies
+
+Resolve managed child modules through a non-caching getter on the parent. The
+getter declaration creates nothing by itself; access after attachment calls
+`viewModelBinding.read/watch(spec)`, establishes a parent-owned lifecycle edge,
+and can resolve a fresh generation after explicit `recycle`.
+
+### Keep ViewModel instances inside their Binding boundary
 
 Do not pass a resolved ViewModel instance through component props, constructor
 arguments, globals, registries, callback payloads, or ad-hoc caches. Such a
@@ -150,18 +234,14 @@ from `@lwjlol/view_model/core`, and import Scope/hooks from the relevant platfor
 to keep the runtime boundary visible. There is deliberately no
 `@lwjlol/view_model/react` export.
 
-## Installation
-
-```sh
-npm install @lwjlol/view_model@0.2.0
-```
-
 React Native applications must provide compatible `react` and `react-native`
 peers. Electron renderer applications must provide React and their renderer;
 the host application provides Electron. See the current `package.json` for the
 exact peer ranges.
 
-## React Native quick start
+## Getting Started
+
+### React Native
 
 Declare Specs at module scope to avoid render-time allocation and keep their
 builders and options stable:
@@ -213,7 +293,7 @@ export default function App(): React.JSX.Element {
 The default React Native Scope maps `AppState === 'active'` to resume and every
 other state to pause.
 
-## Electron renderer quick start
+### Electron renderer
 
 Each renderer/window should normally own its top-level Scope and Runtime. The
 default lifecycle considers the renderer active only while the window is
@@ -311,17 +391,6 @@ then expose serializable DTOs/events through a narrow preload IPC API.
 - [Differences from Flutter `view_model`](./docs/flutter-comparison.md)
 
 Every module has a matching Chinese document linked from its first line.
-
-## Install the Codex skill
-
-The repository includes a reusable skill for implementing and reviewing
-`view_model` architecture:
-
-```sh
-npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
-```
-
-Its source is in [`skill/js-view-model`](./skill/js-view-model/SKILL.md).
 
 ## License
 
