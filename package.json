@@ -1,14 +1,16 @@
 {
   "name": "@lwjlol/view_model",
-  "version": "0.2.0",
-  "description": "Application-wide dependency injection, ViewModel composition, state management, and automatic lifecycle for React Native and Electron.",
+  "version": "0.3.0",
+  "description": "Application-wide dependency injection, ViewModel composition, state management, and automatic lifecycle for React Native, Electron, and Taro Vue.",
   "keywords": [
     "view-model",
     "react-native",
     "electron",
     "state-management",
     "dependency-injection",
-    "lifecycle"
+    "lifecycle",
+    "vue",
+    "taro"
   ],
   "homepage": "https://github.com/lwj1994/js_view_model#readme",
   "bugs": {
@@ -59,7 +61,17 @@
       "import": "./dist/electron/index.js",
       "require": "./dist/electron/index.cjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./vue": {
+      "types": "./dist/types/vue/index.d.ts",
+      "import": "./dist/vue/index.js",
+      "require": "./dist/vue/index.cjs"
+    },
+    "./taro-vue": {
+      "types": "./dist/types/taro-vue/index.d.ts",
+      "import": "./dist/taro-vue/index.js",
+      "require": "./dist/taro-vue/index.cjs"
+    }
   },
   "engines": {
     "node": ">=20.19"
@@ -78,9 +90,11 @@
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
+    "@tarojs/taro": ">=4 <5",
     "electron": ">=30",
     "react": ">=18.3.1 <20",
-    "react-native": ">=0.76"
+    "react-native": ">=0.76",
+    "vue": ">=3.3 <4"
   },
   "peerDependenciesMeta": {
     "electron": {
@@ -90,6 +104,12 @@
       "optional": true
     },
     "react-native": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "@tarojs/taro": {
       "optional": true
     }
   },
@@ -104,7 +124,8 @@
     "rimraf": "6.1.2",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "vue": "3.5.42"
   },
   "overrides": {
     "esbuild": "0.28.1"

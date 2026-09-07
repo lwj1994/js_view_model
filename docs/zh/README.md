@@ -2,7 +2,7 @@
 
 [English](../README.md) · [项目 README](../../README_ZH.md)
 
-`view_model` 是面向 React Native 与 Electron 的应用架构。它组合了显式依赖注入 Runtime、按需功能模块组合、状态通知与 owner 驱动的生命周期管理。ViewModel 不只服务 View；repository、service、coordinator 与领域能力都能在不依赖 React 的情况下使用同一套 Runtime。
+`view_model` 是面向 React Native、Electron 并提供可选 Taro Vue 桥接的应用架构。它组合了显式依赖注入 Runtime、按需功能模块组合、状态通知与 owner 驱动的生命周期管理。ViewModel 不只服务 View；repository、service、coordinator 与领域能力都能在不依赖 React 的情况下使用同一套 Runtime。
 
 ## 按目标阅读
 
@@ -57,4 +57,4 @@
 
 ## 支持边界
 
-公开应用入口只有 `@lwjlol/view_model/core`、`@lwjlol/view_model/react-native` 与 `@lwjlol/view_model/electron`。本库没有 `@lwjlol/view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。
+公开应用入口包括 `@lwjlol/view_model/core`、`@lwjlol/view_model/react-native`、`@lwjlol/view_model/electron`，以及可选的 `@lwjlol/view_model/vue` 和 `@lwjlol/view_model/taro-vue` 桥接，详见 [Vue 3 / Taro 4 集成](./vue-taro.md)。本库没有 `@lwjlol/view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。

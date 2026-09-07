@@ -6,6 +6,10 @@ Significant changes to this project are recorded here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-07
+
+- Added optional Vue 3 and Taro 4 bridges with component-owned Bindings, reactive refs, selectors, recycle recovery, and explicit application/isolated-page lifecycle integration.
+
 ## [0.2.0] - 2026-08-04
 
 ### Added

@@ -6,14 +6,14 @@
 
 [English](./README.md)
 
-**不只是状态管理。view_model 同时是一套面向 React Native 与 Electron 的 TypeScript 应用级依赖注入、功能模块组合与自动生命周期管理架构。**
+**不只是状态管理。view_model 同时是一套面向 React Native、Electron 并提供可选 Vue 3 / Taro 4 桥接的 TypeScript 应用级依赖注入、功能模块组合与自动生命周期管理架构。**
 
 npm 包名为 [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model)。
 
 `view_model` 不只管理页面状态。功能、repository、service、coordinator、设备连接或领域能力都可以成为受管理的 ViewModel。模块通过 `viewModelBinding` 按需解析彼此，在明确的 `ViewModelRuntime` 内共享实例，并在最后一个 owner 离开后释放资源。
 
 ```sh
-npm install @lwjlol/view_model@0.2.0
+npm install @lwjlol/view_model@0.3.0
 ```
 
 ## Skill 安装
@@ -25,7 +25,7 @@ npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
 该 skill 用于实现与审查 `view_model` 架构，源码位于 [`skill/js-view-model`](./skill/js-view-model/SKILL.md)。
 
 > [!IMPORTANT]
-> 本包只支持 React Native 与 Electron App，不支持普通 React Web、SSR、React Server Components 或通用 DOM 应用。
+> 本包支持 React Native、Electron 和可选的 Taro 4 + Vue 3 集成；不支持普通 React Web、SSR 或 React Server Components。
 
 ---
 
@@ -176,11 +176,30 @@ export function shutdownApplication(): void {
 | 平台无关 TypeScript / Electron main | `@lwjlol/view_model/core`         | 支持       |
 | React Native                        | `@lwjlol/view_model/react-native` | 支持       |
 | Electron renderer                   | `@lwjlol/view_model/electron`     | 支持       |
+| Vue 3 bridge                        | `@lwjlol/view_model/vue`          | 可选       |
+| Taro 4 + Vue 3                      | `@lwjlol/view_model/taro-vue`     | 可选       |
 | 普通 React Web / SSR                | 无                                | **不支持** |
 
 平台入口会重导出 core API。建议从 `@lwjlol/view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `@lwjlol/view_model/react`。
 
-React Native App 必须提供兼容的 `react` 与 `react-native` peer。Electron renderer App 必须提供 React 与自己的 renderer，Electron 由宿主 App 提供。精确版本范围以当前 `package.json` 为准。
+按项目平台选择对应入口。框架 peer 均为可选依赖，安装本包不会自动安装它们。
+已有项目只需安装 `@lwjlol/view_model`，继续使用项目自身管理的框架版本。
+
+| 三选一平台        | 导入入口                          | 宿主所需依赖                                    |
+| ----------------- | --------------------------------- | ----------------------------------------------- |
+| React Native      | `@lwjlol/view_model/react-native` | `react`、`react-native`                         |
+| Electron renderer | `@lwjlol/view_model/electron`     | `react`；Electron 由宿主提供                    |
+| Taro 4 + Vue 3    | `@lwjlol/view_model/taro-vue`     | `vue`、`@tarojs/taro`、项目自身的 Taro Vue 插件 |
+
+core 入口不需要任何框架。其他适配器的小型文件随同一个 npm 包分发，但所选入口不会加载它们。
+仓库中的 `devDependencies` 仅用于开发本库，不会作为使用方依赖安装。精确 peer 范围见 `package.json`。
+
+## Vue 3 + Taro 4 可选桥接
+
+在 Taro 页面 setup 中导入 `@lwjlol/view_model/taro-vue`，底层 Vue 桥接通过
+`@lwjlol/view_model/vue` 提供。只有这两个入口需要 Vue，只有 `taro-vue`
+需要 Taro；现有 RN/Electron 用户无需安装这些 peer。接入、ref 访问、
+所有权与生命周期示例见 [Vue 与 Taro 集成](./docs/zh/vue-taro.md)。
 
 ## 快速开始
 

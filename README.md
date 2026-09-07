@@ -8,7 +8,7 @@
 
 **More than state management: view_model is a TypeScript architecture for
 application-wide dependency injection, functional-module composition, and
-automatic lifecycle management in React Native and Electron.**
+automatic lifecycle management in React Native and Electron, with optional Vue 3 / Taro 4 bridges.**
 
 Published on npm as [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model).
 
@@ -19,7 +19,7 @@ instances within an explicit `ViewModelRuntime`, and release resources when
 their final owner leaves.
 
 ```sh
-npm install @lwjlol/view_model@0.2.0
+npm install @lwjlol/view_model@0.3.0
 ```
 
 ## Install Skill
@@ -32,9 +32,8 @@ The skill is designed for implementation and architecture review. Its source
 is in [`skill/js-view-model`](./skill/js-view-model/SKILL.md).
 
 > [!IMPORTANT]
-> This package supports React Native and Electron applications only. It does
-> not support ordinary React Web, SSR, React Server Components, or general DOM
-> applications.
+> This package supports React Native, Electron, and optional Taro 4 + Vue 3 integration.
+> Ordinary React Web, SSR, and React Server Components remain unsupported.
 
 ---
 
@@ -227,6 +226,8 @@ a substitute for managed sharing.
 | Platform-neutral TypeScript / Electron main | `@lwjlol/view_model/core`         | Supported       |
 | React Native                                | `@lwjlol/view_model/react-native` | Supported       |
 | Electron renderer                           | `@lwjlol/view_model/electron`     | Supported       |
+| Vue 3 bridge                                | `@lwjlol/view_model/vue`          | Optional        |
+| Taro 4 + Vue 3                              | `@lwjlol/view_model/taro-vue`     | Optional        |
 | Ordinary React Web / SSR                    | None                              | **Unsupported** |
 
 The platform entries re-export the core API. Import ViewModel classes and Specs
@@ -234,10 +235,28 @@ from `@lwjlol/view_model/core`, and import Scope/hooks from the relevant platfor
 to keep the runtime boundary visible. There is deliberately no
 `@lwjlol/view_model/react` export.
 
-React Native applications must provide compatible `react` and `react-native`
-peers. Electron renderer applications must provide React and their renderer;
-the host application provides Electron. See the current `package.json` for the
-exact peer ranges.
+Choose the entry for your platform. Framework peers are optional and are not
+installed automatically with this package. Existing projects only need to install
+`@lwjlol/view_model`; keep the framework versions already managed by the project.
+
+| Choose one platform | Import                            | Required host dependencies                           |
+| ------------------- | --------------------------------- | ---------------------------------------------------- |
+| React Native        | `@lwjlol/view_model/react-native` | `react`, `react-native`                              |
+| Electron renderer   | `@lwjlol/view_model/electron`     | `react`; Electron provided by the host               |
+| Taro 4 + Vue 3      | `@lwjlol/view_model/taro-vue`     | `vue`, `@tarojs/taro`, the project's Taro Vue plugin |
+
+The core entry needs none of these frameworks. Other adapters are included as small
+files in the same npm package, but are not loaded by your selected entry. Repository
+`devDependencies` are for developing this library and are not consumer dependencies.
+See `package.json` for exact peer ranges.
+
+## Vue 3 + Taro 4 optional bridge
+
+Import from `@lwjlol/view_model/taro-vue` in Taro page setup; use
+`@lwjlol/view_model/vue` for the underlying Vue bridge. Only these entries
+require Vue; only `taro-vue` requires Taro. Existing RN/Electron users do not
+need either peer. See [Vue and Taro integration](./docs/vue-taro.md) for setup,
+ref access, ownership, and lifecycle examples.
 
 ## Getting Started
 

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-`js_view_model` 是只面向 React Native 与 Electron App 的 TypeScript 状态管理、
+`js_view_model` 面向 React Native、Electron 与 Taro 4 + Vue 3 App 的 TypeScript 状态管理、
 模块组合、依赖注入与自动生命周期框架；不要新增普通 React Web 支持入口。
 
 ## 目录
@@ -9,6 +9,8 @@
 - `src/react/`：RN/Electron 共用的内部 React 绑定，不作为公共 Web 入口导出。
 - `src/react-native/`：React Native Scope 与 AppState 适配。
 - `src/electron/`：Electron renderer Scope 与窗口生命周期适配。
+- `src/vue/`：可选 Vue 3 响应式与组件 owner 桥接。
+- `src/taro-vue/`：可选 Taro 4 页面与应用生命周期适配。
 - `scripts/`：构建后 package exports 与 ESM/CJS 身份冒烟验证。
 - `tests/`：核心、React 与平台测试。
 
@@ -26,7 +28,8 @@
 - 整段同步通知级联共享 transaction，并按 Binding identity 去重；异步通知开启新 transaction。
 - 依赖 getter 仅供 commit 后的 ViewModel action/生命周期使用，不得在 React render 或 selector 中读取。
 - React render 只能 `prepare` 纯对象；owner、`onCreate` 与 `onBind` 必须在 commit 后建立。
-- 保持 RN/Electron 平台入口，禁止新增 `@lwjlol/view_model/react` 或 Web 支持承诺。
+- 保持 RN/Electron 平台入口，禁止新增 `@lwjlol/view_model/react` 或普通 React Web 支持承诺。Vue 桥接面向 Taro，不承诺 SSR 支持。
+- Taro 页面默认仅在卸载时释放 Binding；页面显隐暂停只能用于独立 Runtime。
 - 用户文档提供结构镜像的英文与中文版本；代码注释使用英文。
 
 ## 验证

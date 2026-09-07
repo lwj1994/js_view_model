@@ -2,7 +2,7 @@
 
 [简体中文](./zh/README.md) · [Project README](../README.md)
 
-`view_model` is an application architecture for React Native and Electron. It
+`view_model` is an application architecture for React Native, Electron, and optional Taro Vue integration. It
 combines an explicit dependency-injection runtime, demand-driven functional
 module composition, state notifications, and owner-based lifecycle management.
 ViewModels are not restricted to views: repositories, services, coordinators,
@@ -65,6 +65,8 @@ and domain capabilities can use the same runtime without React.
 
 ## Support boundary
 
-Only `@lwjlol/view_model/core`, `@lwjlol/view_model/react-native`, and `@lwjlol/view_model/electron` are
-public application entry points. There is no `@lwjlol/view_model/react`, and this
+Public application entry points include `@lwjlol/view_model/core`,
+`@lwjlol/view_model/react-native`, `@lwjlol/view_model/electron`, and the optional
+`@lwjlol/view_model/vue` and `@lwjlol/view_model/taro-vue` bridges.
+See [Vue 3 / Taro 4 integration](./vue-taro.md). There is no `@lwjlol/view_model/react`, and this
 package makes no React Web, SSR, RSC, or browser hydration promise.

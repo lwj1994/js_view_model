@@ -4,6 +4,8 @@ import { defineConfig, type Options } from 'tsup';
 const platformEntries = {
   'react-native/index': 'src/react-native/index.ts',
   'electron/index': 'src/electron/index.ts',
+  'vue/index': 'src/vue/index.ts',
+  'taro-vue/index': 'src/taro-vue/index.ts',
 };
 
 const shared: Options = {
@@ -23,8 +25,8 @@ function externalCore(extension: '.js' | '.cjs'): Plugin {
   return {
     name: `external-view-model-core-${extension}`,
     setup(build) {
-      build.onResolve({ filter: /^\.\.\/core\/index\.js$/ }, () => ({
-        path: `../core/index${extension}`,
+      build.onResolve({ filter: /^\.\.\/(core|vue)\/index\.js$/ }, (args) => ({
+        path: args.path.replace(/\.js$/, extension),
         external: true,
       }));
     },
@@ -46,7 +48,7 @@ export default defineConfig([
     entry: platformEntries,
     format: ['esm'],
     dts: false,
-    external: ['electron', 'react', 'react/jsx-runtime', 'react-native'],
+    external: ['electron', 'react', 'react/jsx-runtime', 'react-native', 'vue', '@tarojs/taro'],
     esbuildPlugins: [externalCore('.js')],
   },
   {
@@ -54,7 +56,7 @@ export default defineConfig([
     entry: platformEntries,
     format: ['cjs'],
     dts: false,
-    external: ['electron', 'react', 'react/jsx-runtime', 'react-native'],
+    external: ['electron', 'react', 'react/jsx-runtime', 'react-native', 'vue', '@tarojs/taro'],
     esbuildPlugins: [externalCore('.cjs')],
     outExtension: () => ({ js: '.cjs' }),
   },

@@ -1,13 +1,13 @@
 ---
 name: js-view-model
-description: Build or refactor React Native and Electron functional modules and state management with @lwjlol/view_model, including application-wide dependency injection, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, watch/read and cached lookup semantics, lifecycle, pause-resume, testing, and platform integration.
+description: Build or refactor React Native, Electron, and optional Taro Vue functional modules and state management with @lwjlol/view_model, including application-wide dependency injection, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, watch/read and cached lookup semantics, lifecycle, pause-resume, testing, and platform integration.
 ---
 
 # JS ViewModel Skill
 
 Use this skill when tasks involve `@lwjlol/view_model` architecture,
 migration, bug fixing, performance tuning, review, or feature implementation
-for React Native and Electron applications.
+for React Native, Electron, and optional Taro 4 + Vue 3 applications.
 
 ## Source of truth
 
@@ -136,7 +136,12 @@ export const checkoutSpec = viewModelSpec(CheckoutViewModel, () => new CheckoutV
    - Use `@lwjlol/view_model/core` in plain TypeScript and Electron main.
    - Use `@lwjlol/view_model/react-native` for React Native Scope/hooks.
    - Use `@lwjlol/view_model/electron` for Electron renderer Scope/hooks.
-   - Never generate `@lwjlol/view_model/react` or claim Web/SSR/RSC support.
+   - Use `@lwjlol/view_model/taro-vue` in Taro 4 Vue page setup and
+     `@lwjlol/view_model/vue` for Vue composables. They return shallow refs;
+     access `.value` in script and preserve refs across recycle. Each consuming
+     component owns a Binding. Page hide retains ownership; `pauseOnHide`
+     requires an isolated runtime. See the repository Vue/Taro guide.
+   - Never generate a `@lwjlol/view_model/react` import or claim Web/SSR/RSC support.
    - Use one application Runtime for one sharing graph; use separate Runtimes
      for hard isolation, independent pause state, tests, or separate realms.
 

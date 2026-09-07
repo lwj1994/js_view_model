@@ -2,7 +2,7 @@
 
 [English](../api.md) · [文档索引](./README.md)
 
-> 本参考描述 React Native、Electron renderer 与 Electron main/core 的正式支持接口。精确泛型推导仍以当前 package 生成的 TypeScript declarations 为准。
+> 本参考描述 React Native、Electron renderer、Electron main/core 与可选 Vue/Taro 的正式支持接口。精确泛型推导仍以当前 package 生成的 TypeScript declarations 为准。
 
 ## Package 入口
 
@@ -12,6 +12,8 @@
 | `@lwjlol/view_model/core`         | React Native plain owner、Electron main、test、共享 module | ViewModel class、Spec、Runtime、Binding、type 与 error。                     |
 | `@lwjlol/view_model/react-native` | React Native                                               | 全部 core export，加上 React Native Scope、hooks 与 AppState adapter。       |
 | `@lwjlol/view_model/electron`     | Electron renderer                                          | 全部 core export，加上 Electron renderer Scope、hooks 与 lifecycle adapter。 |
+| `@lwjlol/view_model/vue`          | Vue 3                                                      | Core 和 Vue composable，见 [桥接 API](./vue-taro.md)。                       |
+| `@lwjlol/view_model/taro-vue`     | Taro 4 + Vue 3                                             | Vue 桥接及 Taro 页面/应用生命周期。                                          |
 
 package 有意不导出 `@lwjlol/view_model/react`。内部 React implementation 只由两个 platform adapter 共享，不构成通用 React Web contract。
 

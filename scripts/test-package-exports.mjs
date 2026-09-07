@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
 
 const require = createRequire(import.meta.url);
+const manifest = require('../package.json');
+assert.equal(
+  Object.keys(manifest.dependencies ?? {}).length,
+  0,
+  'Core must have no required framework dependencies',
+);
+for (const peer of ['react', 'react-native', 'electron', 'vue', '@tarojs/taro']) {
+  assert.equal(manifest.peerDependenciesMeta[peer].optional, true, `${peer} must remain opt-in`);
+}
 const esmCore = await import('../dist/core/index.js');
 const esmElectron = await import('../dist/electron/index.js');
 const cjsCore = require('../dist/core/index.cjs');
@@ -51,4 +65,56 @@ assert.equal(
 );
 crossConditionRuntime.dispose();
 
+const esmVue = await import('@lwjlol/view_model/vue');
+const cjsVue = require('@lwjlol/view_model/vue');
+assert.equal(esmVue.ViewModel, esmCore.ViewModel);
+assert.equal(cjsVue.ViewModel, cjsCore.ViewModel);
+
+// Stub only the optional host hooks; preserve the actual built Vue/core imports.
+const temporary = await mkdtemp(join(tmpdir(), 'view-model-exports-'));
+try {
+  for (const [format, extension, vue] of [
+    ['esm', '.js', esmVue],
+    ['cjs', '.cjs', cjsVue],
+  ]) {
+    const output = join(temporary, format === 'esm' ? 'taro.mjs' : 'taro.cjs');
+    await build({
+      entryPoints: [resolve(`dist/taro-vue/index${extension}`)],
+      outfile: output,
+      bundle: true,
+      platform: 'node',
+      format,
+      plugins: [
+        {
+          name: 'optional-taro-host',
+          setup(builder) {
+            builder.onResolve({ filter: /^@tarojs\/taro$/ }, () => ({
+              path: 'hooks',
+              namespace: 'host',
+            }));
+            builder.onLoad({ filter: /.*/, namespace: 'host' }, () => ({
+              contents:
+                'export const useDidShow = () => {}; export const useDidHide = () => {}; export const useUnload = () => {};',
+            }));
+            builder.onResolve({ filter: /^(vue|\.\.\/(vue|core)\/index\.(js|cjs))$/ }, (args) => ({
+              path:
+                args.path === 'vue' ? require.resolve('vue') : resolve(args.resolveDir, args.path),
+              external: true,
+            }));
+          },
+        },
+      ],
+    });
+    const taro = format === 'esm' ? await import(pathToFileURL(output).href) : require(output);
+    assert.equal(taro.ViewModel, vue.ViewModel, `${format} Taro must reuse core`);
+    assert.equal(
+      taro.useViewModelScope,
+      vue.useViewModelScope,
+      `${format} Taro must reuse Vue context`,
+    );
+    assert.equal(typeof taro.useTaroViewModelScope, 'function');
+  }
+} finally {
+  await rm(temporary, { recursive: true, force: true });
+}
 console.log('package exports: ok');

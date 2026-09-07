@@ -17,7 +17,7 @@
 在 React Native 或 Electron 应用中安装已发布的正式包：
 
 ```sh
-npm install @lwjlol/view_model@0.2.0
+npm install @lwjlol/view_model@0.3.0
 ```
 
 相关 peer dependency 由宿主应用提供：React Native 应用提供 React 与 React Native；Electron renderer 提供 React 与 Electron。Electron main 可以在不依赖 React 的情况下使用 core 入口。

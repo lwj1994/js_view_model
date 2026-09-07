@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-07
+
+- 新增可选 Vue 3 与 Taro 4 桥接，支持组件级 Binding、响应式 ref、selector、recycle 恢复，以及显式应用/独立页面生命周期集成。
+
 ## [0.2.0] - 2026-08-04
 
 ### Added
