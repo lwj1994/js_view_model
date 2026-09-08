@@ -1,3 +1,4 @@
+import { scheduleMicrotask } from '../shared/microtask.js';
 import {
   ViewModelBindingDisposedError,
   ViewModelDependencyCycleError,
@@ -608,7 +609,7 @@ export class ViewModelRuntime {
 
     const pending: PendingDisposal = { cancelled: false };
     handle.pendingDisposal = pending;
-    queueMicrotask(() => {
+    scheduleMicrotask(() => {
       if (
         pending.cancelled ||
         handle.pendingDisposal !== pending ||

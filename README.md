@@ -19,7 +19,7 @@ instances within an explicit `ViewModelRuntime`, and release resources when
 their final owner leaves.
 
 ```sh
-npm install @lwjlol/view_model@0.3.0
+npm install @lwjlol/view_model@0.3.1
 ```
 
 ## Install Skill

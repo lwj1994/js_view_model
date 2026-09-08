@@ -1,3 +1,4 @@
+import { scheduleMicrotask } from '../shared/microtask.js';
 import { useEffect, useRef } from 'react';
 
 import type { ViewModelRuntime } from '../core/index.js';
@@ -72,7 +73,7 @@ export function useRuntimeLifecycle(
       // pair while a background app is being probed in development.
       const task: PendingResume = { runtime, token, cancelled: false };
       pendingResume.current = task;
-      queueMicrotask(() => {
+      scheduleMicrotask(() => {
         if (!task.cancelled) {
           runtime.resume(token);
         }

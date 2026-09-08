@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-08
+
+- 修复缺少 `queueMicrotask` 的宿主（包括小程序运行时）中的生命周期调度。内部统一优先使用原生 API，缺失时降级为 Promise 微任务；回调异常通过定时器重新抛出，保留未捕获异常上报，避免变为未处理的 Promise rejection。
+
 ## [0.3.0] - 2026-09-07
 
 - 新增可选 Vue 3 与 Taro 4 桥接，支持组件级 Binding、响应式 ref、selector、recycle 恢复，以及显式应用/独立页面生命周期集成。

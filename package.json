@@ -1,6 +1,6 @@
 {
   "name": "@lwjlol/view_model",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Application-wide dependency injection, ViewModel composition, state management, and automatic lifecycle for React Native, Electron, and Taro Vue.",
   "keywords": [
     "view-model",

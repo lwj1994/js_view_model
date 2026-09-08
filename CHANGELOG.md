@@ -6,6 +6,10 @@ Significant changes to this project are recorded here.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-08
+
+- Fixed lifecycle microtask scheduling on hosts without `queueMicrotask` (including mini-program runtimes). The internal scheduler prefers the native API and falls back to Promise microtasks; callback failures are rethrown in a timer as uncaught exceptions, rather than unhandled Promise rejections.
+
 ## [0.3.0] - 2026-09-07
 
 - Added optional Vue 3 and Taro 4 bridges with component-owned Bindings, reactive refs, selectors, recycle recovery, and explicit application/isolated-page lifecycle integration.

@@ -15,6 +15,15 @@ import {
   type ElectronLifecycleSource,
 } from '../../src/electron/index.js';
 
+// React act chooses its own scheduler at import time. Load it as on a host
+// without this API, so removing the API in fallback tests also works in act.
+const originalQueueMicrotask = vi.hoisted(() => {
+  const original = globalThis.queueMicrotask;
+  Reflect.deleteProperty(globalThis, 'queueMicrotask');
+  return original;
+});
+globalThis.queueMicrotask = originalQueueMicrotask;
+
 class FakeLifecycle implements ElectronLifecycleSource {
   active = true;
   private readonly listeners = new Set<(active: boolean) => void>();
@@ -39,13 +48,14 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
-describe('Electron React 绑定', () => {
+describe.each([true, false])('Electron React 绑定（原生微任务 API：%s）', (nativeMicrotask) => {
   let renderer: ReactTestRenderer | undefined;
   let runtimes: ViewModelRuntime[] = [];
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     runtimes = [];
+    if (!nativeMicrotask) vi.stubGlobal('queueMicrotask', undefined);
   });
 
   afterEach(async () => {
@@ -58,6 +68,7 @@ describe('Electron React 绑定', () => {
     }
 
     runtimes.forEach((runtime) => runtime.dispose());
+    vi.unstubAllGlobals();
   });
 
   it('同 Scope 共享 unkeyed 实例，嵌套 Scope 默认共用 runtime 但隔离实例', async () => {

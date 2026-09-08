@@ -13,7 +13,7 @@ npm 包名为 [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_
 `view_model` 不只管理页面状态。功能、repository、service、coordinator、设备连接或领域能力都可以成为受管理的 ViewModel。模块通过 `viewModelBinding` 按需解析彼此，在明确的 `ViewModelRuntime` 内共享实例，并在最后一个 owner 离开后释放资源。
 
 ```sh
-npm install @lwjlol/view_model@0.3.0
+npm install @lwjlol/view_model@0.3.1
 ```
 
 ## Skill 安装

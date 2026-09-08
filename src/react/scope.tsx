@@ -1,3 +1,4 @@
+import { scheduleMicrotask } from '../shared/microtask.js';
 import {
   useContext,
   useEffect,
@@ -68,7 +69,7 @@ export function InternalViewModelScope({
       // React StrictMode runs setup -> cleanup -> setup. A microtask delay lets
       // the second setup cancel disposal while a real unmount still releases
       // the binding and root runtime.
-      queueMicrotask(() => {
+      scheduleMicrotask(() => {
         if (task.cancelled) {
           return;
         }
@@ -87,7 +88,7 @@ export function InternalViewModelScope({
           // Nested Scope cleanup order must not affect correctness. Yield one
           // more microtask so child bindings that share this runtime can release
           // their owners first.
-          queueMicrotask(() => {
+          scheduleMicrotask(() => {
             const errors: unknown[] = [];
             if (bindingError !== undefined) errors.push(bindingError);
             try {

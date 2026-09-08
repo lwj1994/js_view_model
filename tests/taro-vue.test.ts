@@ -1,5 +1,5 @@
 import { effectScope } from 'vue';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const hooks = vi.hoisted(() => ({
   show: [] as (() => void)[],
   hide: [] as (() => void)[],
@@ -23,7 +23,11 @@ const spec = viewModelSpec(Model, () => new Model());
 beforeEach(() => {
   hooks.show.length = hooks.hide.length = hooks.unload.length = 0;
 });
-describe('Taro Vue lifecycle', () => {
+afterEach(() => vi.unstubAllGlobals());
+describe.each([true, false])('Taro Vue lifecycle (native microtask: %s)', (nativeMicrotask) => {
+  beforeEach(() => {
+    if (!nativeMicrotask) vi.stubGlobal('queueMicrotask', undefined);
+  });
   it('retains hidden page owners and releases on unload without pausing shared runtime', async () => {
     const runtime = new ViewModelRuntime(),
       effects = effectScope();
@@ -32,6 +36,7 @@ describe('Taro Vue lifecycle', () => {
       useViewModel(spec);
       return owner;
     })!;
+    const vm = owner.binding.read(spec);
     hooks.hide.forEach((fn) => fn());
     expect(runtime.isPaused).toBe(false);
     expect(owner.isDisposed).toBe(false);
@@ -39,6 +44,7 @@ describe('Taro Vue lifecycle', () => {
     effects.stop();
     await Promise.resolve();
     expect(owner.isDisposed).toBe(true);
+    expect(vm.isDisposed).toBe(true);
     expect(runtime.isDisposed).toBe(false);
     runtime.dispose();
   });
