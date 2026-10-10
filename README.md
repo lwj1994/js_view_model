@@ -10,7 +10,7 @@
 
 **More than state management: view_model is a TypeScript architecture for
 application-wide dependency injection, functional-module composition, and
-automatic lifecycle management in React Native and Electron, with optional Vue 3 / Taro 4 bridges.**
+automatic lifecycle management in React Native and Electron, with optional Vue 3 / Taro 4 bridges and a HarmonyOS host adapter preview.**
 
 Published on npm as [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model).
 
@@ -35,6 +35,7 @@ is in [`skill/js-view-model`](./skill/js-view-model/SKILL.md).
 
 > [!IMPORTANT]
 > This package supports React Native, Electron, and optional Taro 4 + Vue 3 integration.
+> The HarmonyOS / ArkUI adapter is an unreleased source preview; see its SDK validation boundary below.
 > Ordinary React Web, SSR, and React Server Components remain unsupported.
 
 ---
@@ -232,6 +233,7 @@ a substitute for managed sharing.
 | Vue 3 bridge                                | `@lwjlol/view_model/vue`          | Optional        |
 | Taro 4 + Vue 3                              | `@lwjlol/view_model/taro-vue`     | Optional        |
 | ESLint (lint process only)                  | `@lwjlol/view_model/eslint`       | Optional        |
+| HarmonyOS / ArkUI host                      | `@lwjlol/view_model/harmony`      | Source preview  |
 | Ordinary React Web / SSR                    | None                              | **Unsupported** |
 
 The platform entries re-export the core API. Import ViewModel classes and Specs
@@ -248,6 +250,7 @@ installed automatically with this package. Existing projects only need to instal
 | React Native        | `@lwjlol/view_model/react-native` | `react`, `react-native`                              |
 | Electron renderer   | `@lwjlol/view_model/electron`     | `react`; Electron provided by the host               |
 | Taro 4 + Vue 3      | `@lwjlol/view_model/taro-vue`     | `vue`, `@tarojs/taro`, the project's Taro Vue plugin |
+| HarmonyOS / ArkUI   | OHPM package root; npm `/harmony` | ArkUI host callbacks; no React/Vue peers             |
 
 The core entry needs none of these frameworks. Other adapters are included as small
 files in the same npm package, but are not loaded by your selected entry. Repository
@@ -261,6 +264,23 @@ Import from `@lwjlol/view_model/taro-vue` in Taro page setup; use
 require Vue; only `taro-vue` requires Taro. Existing RN/Electron users do not
 need either peer. See [Vue and Taro integration](./docs/vue-taro.md) for setup,
 ref access, ownership, and lifecycle examples.
+
+## HarmonyOS / ArkUI bridge preview
+
+The Harmony adapter reuses the TS/JS core with a stable component Binding and explicit
+host callbacks. `createViewModelHarmonyScope` preserves `watch`/`read`, keyed sharing,
+and recycle semantics. `createViewModelHarmonyLifecycle` connects app/window activity
+to Runtime pause tokens independently of component ownership.
+
+Build a local OHPM package from this checkout with `npm run build:harmony`; its output
+is `dist/ohpm`. The OHPM package root exports the Harmony adapter and core API. The npm
+build exposes the adapter through `@lwjlol/view_model/harmony`. This addition is not
+included in the previously published npm `0.3.1` release.
+
+The OHPM build downlevels JavaScript syntax to ES2017. Adapter and package tests run
+under Node; they do not validate ArkTS compilation, built-in runtime API availability,
+or device behavior. See the [HarmonyOS integration guide](./docs/harmony.md) and
+[ArkUI counter example](./examples/harmony-counter/README.md) for the target SDK checks.
 
 ## Getting Started
 
@@ -443,6 +463,7 @@ every rule.
 - [Lifecycle, StrictMode, and pause/resume](./docs/lifecycle.md)
 - [React Native integration](./docs/react-native.md)
 - [Electron integration](./docs/electron.md)
+- [HarmonyOS / ArkUI integration](./docs/harmony.md)
 - [Testing and package validation](./docs/testing.md)
 - [API reference](./docs/api.md)
 - [ESLint rules](./docs/lint.md)
