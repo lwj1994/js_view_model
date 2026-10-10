@@ -6,6 +6,7 @@ const platformEntries = {
   'electron/index': 'src/electron/index.ts',
   'vue/index': 'src/vue/index.ts',
   'taro-vue/index': 'src/taro-vue/index.ts',
+  'harmony/index': 'src/harmony/index.ts',
 };
 
 const shared: Options = {

@@ -2,7 +2,7 @@
 
 [简体中文](./zh/README.md) · [Project README](../README.md)
 
-`view_model` is an application architecture for React Native, Electron, and optional Taro Vue integration. It
+`view_model` is an application architecture for React Native, Electron, optional Taro Vue integration, and a HarmonyOS host adapter preview. It
 combines an explicit dependency-injection runtime, demand-driven functional
 module composition, state notifications, and owner-based lifecycle management.
 ViewModels are not restricted to views: repositories, services, coordinators,
@@ -23,7 +23,7 @@ and domain capabilities can use the same runtime without React.
 2. [Module composition and dependency injection](./dependency-injection.md)
 3. [Lifecycle, StrictMode, and pause/resume](./lifecycle.md)
 4. [React Native integration](./react-native.md) or
-   [Electron integration](./electron.md)
+   [Electron integration](./electron.md); see [HarmonyOS / ArkUI](./harmony.md) for the source preview
 
 ### I am maintaining or reviewing a project
 
@@ -44,6 +44,7 @@ and domain capabilities can use the same runtime without React.
 | [Lifecycle](./lifecycle.md)                         | What happens across React render/commit, StrictMode, pause/resume, and disposal?         |
 | [React Native](./react-native.md)                   | How do Scope, hooks, AppState, navigation focus, and custom lifecycle sources interact?  |
 | [Electron](./electron.md)                           | How should renderer, preload, main, windows, lifecycle, and IPC boundaries be designed?  |
+| [HarmonyOS / ArkUI](./harmony.md)                   | How does the TS/JS adapter connect ArkUI state, component ownership, and app lifecycle?  |
 | [Testing](./testing.md)                             | How do I test core modules, React bindings, lifecycle, package exports, and cleanup?     |
 | [API reference](./api.md)                           | What does each currently exported class, function, hook, type, and error mean?           |
 | [Flutter comparison](./flutter-comparison.md)       | Which concepts are shared with Flutter `view_model`, and which APIs or semantics differ? |
@@ -70,3 +71,7 @@ Public application entry points include `@lwjlol/view_model/core`,
 `@lwjlol/view_model/vue` and `@lwjlol/view_model/taro-vue` bridges.
 See [Vue 3 / Taro 4 integration](./vue-taro.md). There is no `@lwjlol/view_model/react`, and this
 package makes no React Web, SSR, RSC, or browser hydration promise.
+
+The unreleased `@lwjlol/view_model/harmony` entry and local OHPM package are a
+[HarmonyOS / ArkUI source preview](./harmony.md). Node tests cover the callback adapter,
+package exports, and TS facade; DevEco compilation and device validation remain separate.

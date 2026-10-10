@@ -6,7 +6,7 @@
 
 [English](./README.md)
 
-**不只是状态管理。view_model 同时是一套面向 React Native、Electron 并提供可选 Vue 3 / Taro 4 桥接的 TypeScript 应用级依赖注入、功能模块组合与自动生命周期管理架构。**
+**不只是状态管理。view_model 同时是一套面向 React Native、Electron，提供可选 Vue 3 / Taro 4 桥接和 HarmonyOS 宿主适配预览的 TypeScript 应用级依赖注入、功能模块组合与自动生命周期管理架构。**
 
 npm 包名为 [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_model)。
 
@@ -26,6 +26,7 @@ npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
 
 > [!IMPORTANT]
 > 本包支持 React Native、Electron 和可选的 Taro 4 + Vue 3 集成；不支持普通 React Web、SSR 或 React Server Components。
+> HarmonyOS / ArkUI 适配器是尚未发布的源码预览，SDK 验证边界见下文。
 
 ---
 
@@ -178,6 +179,7 @@ export function shutdownApplication(): void {
 | Electron renderer                   | `@lwjlol/view_model/electron`     | 支持       |
 | Vue 3 bridge                        | `@lwjlol/view_model/vue`          | 可选       |
 | Taro 4 + Vue 3                      | `@lwjlol/view_model/taro-vue`     | 可选       |
+| HarmonyOS / ArkUI 宿主              | `@lwjlol/view_model/harmony`      | 源码预览   |
 | 普通 React Web / SSR                | 无                                | **不支持** |
 
 平台入口会重导出 core API。建议从 `@lwjlol/view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `@lwjlol/view_model/react`。
@@ -185,11 +187,12 @@ export function shutdownApplication(): void {
 按项目平台选择对应入口。框架 peer 均为可选依赖，安装本包不会自动安装它们。
 已有项目只需安装 `@lwjlol/view_model`，继续使用项目自身管理的框架版本。
 
-| 三选一平台        | 导入入口                          | 宿主所需依赖                                    |
+| 选择平台          | 导入入口                          | 宿主所需依赖                                    |
 | ----------------- | --------------------------------- | ----------------------------------------------- |
 | React Native      | `@lwjlol/view_model/react-native` | `react`、`react-native`                         |
 | Electron renderer | `@lwjlol/view_model/electron`     | `react`；Electron 由宿主提供                    |
 | Taro 4 + Vue 3    | `@lwjlol/view_model/taro-vue`     | `vue`、`@tarojs/taro`、项目自身的 Taro Vue 插件 |
+| HarmonyOS / ArkUI | OHPM 包根；npm `/harmony`         | ArkUI 宿主回调，无需 React/Vue peer             |
 
 core 入口不需要任何框架。其他适配器的小型文件随同一个 npm 包分发，但所选入口不会加载它们。
 仓库中的 `devDependencies` 仅用于开发本库，不会作为使用方依赖安装。精确 peer 范围见 `package.json`。
@@ -200,6 +203,22 @@ core 入口不需要任何框架。其他适配器的小型文件随同一个 np
 `@lwjlol/view_model/vue` 提供。只有这两个入口需要 Vue，只有 `taro-vue`
 需要 Taro；现有 RN/Electron 用户无需安装这些 peer。接入、ref 访问、
 所有权与生命周期示例见 [Vue 与 Taro 集成](./docs/zh/vue-taro.md)。
+
+## HarmonyOS / ArkUI 桥接预览
+
+Harmony 适配器复用 TS/JS core，通过稳定的组件 Binding 与显式宿主回调接入。
+`createViewModelHarmonyScope` 保留 `watch`/`read`、keyed 共享和 recycle 语义；
+`createViewModelHarmonyLifecycle` 独立连接应用/窗口活动状态与 Runtime 暂停 token，
+不把组件所有权和前后台状态混在一起。
+
+在本仓库源码中运行 `npm run build:harmony`，生成可本地安装的 OHPM 包 `dist/ohpm`。
+OHPM 包根重导出 Harmony 适配器与 core API；npm 构建则通过
+`@lwjlol/view_model/harmony` 提供入口。此前发布的 npm `0.3.1` 不包含这项新增功能。
+
+OHPM 构建将 JavaScript 语法降至 ES2017。适配器和包测试在 Node 下执行，
+不代表 ArkTS 编译、运行时内建 API 或真机行为已经验证。
+目标 SDK 的核对步骤见 [HarmonyOS 集成文档](./docs/zh/harmony.md)与
+[ArkUI 计数器示例](./examples/harmony-counter/README_ZH.md)。
 
 ## 快速开始
 
@@ -320,6 +339,7 @@ Electron main 不使用 hooks。使用 `ViewModelRuntime` 与 plain Binding，�
 - [生命周期、StrictMode 与暂停恢复](./docs/zh/lifecycle.md)
 - [React Native 集成](./docs/zh/react-native.md)
 - [Electron 集成](./docs/zh/electron.md)
+- [HarmonyOS / ArkUI 集成](./docs/zh/harmony.md)
 - [测试与包验证](./docs/zh/testing.md)
 - [API 参考](./docs/zh/api.md)
 - [与 Flutter `view_model` 的差异](./docs/zh/flutter-comparison.md)

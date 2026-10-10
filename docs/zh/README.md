@@ -2,7 +2,7 @@
 
 [English](../README.md) · [项目 README](../../README_ZH.md)
 
-`view_model` 是面向 React Native、Electron 并提供可选 Taro Vue 桥接的应用架构。它组合了显式依赖注入 Runtime、按需功能模块组合、状态通知与 owner 驱动的生命周期管理。ViewModel 不只服务 View；repository、service、coordinator 与领域能力都能在不依赖 React 的情况下使用同一套 Runtime。
+`view_model` 是面向 React Native、Electron，提供可选 Taro Vue 桥接与 HarmonyOS 宿主适配预览的应用架构。它组合了显式依赖注入 Runtime、按需功能模块组合、状态通知与 owner 驱动的生命周期管理。ViewModel 不只服务 View；repository、service、coordinator 与领域能力都能在不依赖 React 的情况下使用同一套 Runtime。
 
 ## 按目标阅读
 
@@ -18,7 +18,7 @@
 1. [ViewModel 与 StateViewModel](./view-models.md)
 2. [模块组合与依赖注入](./dependency-injection.md)
 3. [生命周期、StrictMode 与暂停恢复](./lifecycle.md)
-4. [React Native 集成](./react-native.md)或 [Electron 集成](./electron.md)
+4. [React Native 集成](./react-native.md)或 [Electron 集成](./electron.md)；源码预览见 [HarmonyOS / ArkUI](./harmony.md)
 
 ### 维护或审查项目
 
@@ -39,6 +39,7 @@
 | [生命周期](./lifecycle.md)                   | React render/commit、StrictMode、pause/resume 与 dispose 之间发生什么？   |
 | [React Native](./react-native.md)            | Scope、hooks、AppState、导航 focus 与自定义 lifecycle source 如何交互？   |
 | [Electron](./electron.md)                    | renderer、preload、main、窗口生命周期与 IPC 边界应怎样设计？              |
+| [HarmonyOS / ArkUI](./harmony.md)            | 如何用 TS/JS 适配器接入 ArkUI 状态、组件所有权和应用生命周期？            |
 | [测试](./testing.md)                         | 如何测试 core module、React binding、生命周期、包入口与资源清理？         |
 | [API 参考](./api.md)                         | 当前导出的 class、function、hook、type 与 error 各自语义是什么？          |
 | [Flutter 版本差异](./flutter-comparison.md)  | 哪些理念与 Flutter `view_model` 相同，哪些 API 或语义不同？               |
@@ -58,3 +59,7 @@
 ## 支持边界
 
 公开应用入口包括 `@lwjlol/view_model/core`、`@lwjlol/view_model/react-native`、`@lwjlol/view_model/electron`，以及可选的 `@lwjlol/view_model/vue` 和 `@lwjlol/view_model/taro-vue` 桥接，详见 [Vue 3 / Taro 4 集成](./vue-taro.md)。本库没有 `@lwjlol/view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。
+
+尚未发布的 `@lwjlol/view_model/harmony` 入口与本地 OHPM 包属于
+[HarmonyOS / ArkUI 源码预览](./harmony.md)。Node 测试覆盖回调适配、包入口与 TS 门面，
+DevEco 编译和真机验证需另行完成。
