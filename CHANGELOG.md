@@ -6,6 +6,11 @@ Significant changes to this project are recorded here.
 
 ## [Unreleased]
 
+- Added a HarmonyOS / ArkUI callback adapter preview with component-owned Bindings, `watch`/`read`, recycle recovery, and independent app/window lifecycle tokens.
+- Added a local OHPM package build with ES2017 JavaScript output, shared core identity, TypeScript declarations, and no framework dependencies, plus a TS facade / ArkUI V2 counter example and mirrored integration guides.
+- Added adapter, npm export, isolated OHPM artifact, and TS facade checks. ArkTS compilation and HarmonyOS device validation are not covered by the Node-based checks.
+- Updated Vitest to `4.1.11` and refreshed affected development dependency resolutions to pass the repository's dependency audit.
+
 ## [0.3.1] - 2026-09-08
 
 - Fixed lifecycle microtask scheduling on hosts without `queueMicrotask` (including mini-program runtimes). The internal scheduler prefers the native API and falls back to Promise microtasks; callback failures are rethrown in a timer as uncaught exceptions, rather than unhandled Promise rejections.

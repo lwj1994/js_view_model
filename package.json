@@ -1,7 +1,7 @@
 {
   "name": "@lwjlol/view_model",
   "version": "0.3.1",
-  "description": "Application-wide dependency injection, ViewModel composition, state management, and automatic lifecycle for React Native, Electron, and Taro Vue.",
+  "description": "Application-wide dependency injection, ViewModel composition, state management, and automatic lifecycle for React Native, Electron, Taro Vue, and HarmonyOS hosts.",
   "keywords": [
     "view-model",
     "react-native",
@@ -10,7 +10,9 @@
     "dependency-injection",
     "lifecycle",
     "vue",
-    "taro"
+    "taro",
+    "harmonyos",
+    "arkui"
   ],
   "homepage": "https://github.com/lwj1994/js_view_model#readme",
   "bugs": {
@@ -71,6 +73,11 @@
       "types": "./dist/types/taro-vue/index.d.ts",
       "import": "./dist/taro-vue/index.js",
       "require": "./dist/taro-vue/index.cjs"
+    },
+    "./harmony": {
+      "types": "./dist/types/harmony/index.d.ts",
+      "import": "./dist/harmony/index.js",
+      "require": "./dist/harmony/index.cjs"
     }
   },
   "engines": {
@@ -78,14 +85,16 @@
   },
   "scripts": {
     "build": "rimraf dist && tsup && tsc -p tsconfig.build.json",
+    "build:harmony": "npm run build && node scripts/build-harmony-package.mjs",
     "clean": "rimraf dist coverage",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --no-file-parallelism",
     "test:watch": "vitest --no-file-parallelism",
     "test:package": "node scripts/test-package-exports.mjs",
+    "test:harmony-package": "node scripts/test-harmony-package.mjs && tsc -p tsconfig.harmony-example.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && npm run typecheck && npm run test && npm run build && npm run test:package",
+    "check": "npm run format:check && npm run typecheck && npm run test && npm run build:harmony && npm run test:package && npm run test:harmony-package",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check"
   },
@@ -124,7 +133,7 @@
     "rimraf": "6.1.2",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
-    "vitest": "4.1.10",
+    "vitest": "4.1.11",
     "vue": "3.5.42"
   },
   "overrides": {

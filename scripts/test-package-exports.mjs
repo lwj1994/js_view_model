@@ -20,9 +20,15 @@ const esmCore = await import('../dist/core/index.js');
 const esmElectron = await import('../dist/electron/index.js');
 const cjsCore = require('../dist/core/index.cjs');
 const cjsElectron = require('../dist/electron/index.cjs');
+const esmHarmony = await import('@lwjlol/view_model/harmony');
+const cjsHarmony = require('@lwjlol/view_model/harmony');
 
 assert.equal(esmCore.ViewModel, esmElectron.ViewModel, 'ESM 平台入口必须复用 ESM core');
 assert.equal(cjsCore.ViewModel, cjsElectron.ViewModel, 'CJS 平台入口必须复用 CJS core');
+assert.equal(esmCore.ViewModel, esmHarmony.ViewModel, 'ESM Harmony must reuse ESM core');
+assert.equal(cjsCore.ViewModel, cjsHarmony.ViewModel, 'CJS Harmony must reuse CJS core');
+assert.equal(typeof esmHarmony.createViewModelHarmonyScope, 'function');
+assert.equal(typeof cjsHarmony.createViewModelHarmonyLifecycle, 'function');
 
 class CjsViewModel extends cjsCore.ViewModel {}
 const cjsSpec = cjsCore.viewModelSpec(() => new CjsViewModel());

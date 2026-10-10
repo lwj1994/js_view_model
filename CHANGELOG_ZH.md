@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+- 新增 HarmonyOS / ArkUI 回调适配预览，支持组件级 Binding、`watch`/`read`、recycle 恢复，以及独立的应用/窗口生命周期 token。
+- 新增本地 OHPM 包构建，输出 ES2017 JavaScript、共享 core 身份和 TypeScript 声明，不依赖其他 UI 框架；同时提供 TS 门面 / ArkUI V2 计数器示例及中英文集成文档。
+- 新增适配器、npm 入口、隔离 OHPM 产物和 TS 门面验证。基于 Node 的检查不覆盖 ArkTS 编译与鸿蒙真机验证。
+- 将 Vitest 更新至 `4.1.11`，并刷新相关开发依赖的解析版本，以通过仓库要求的依赖审计。
+
 ## [0.3.1] - 2026-09-08
 
 - 修复缺少 `queueMicrotask` 的宿主（包括小程序运行时）中的生命周期调度。内部统一优先使用原生 API，缺失时降级为 Promise 微任务；回调异常通过定时器重新抛出，保留未捕获异常上报，避免变为未处理的 Promise rejection。

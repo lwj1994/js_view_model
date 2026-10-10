@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "paths": {
+      "@lwjlol/view_model": ["./dist/ohpm/types/harmony/index.d.ts"]
+    }
+  },
+  "include": ["examples/harmony-counter/**/*.ts"],
+  "exclude": []
+}
