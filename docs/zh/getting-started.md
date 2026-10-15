@@ -260,7 +260,7 @@ const count = useViewModelSelector(counterSpec, (counter) => counter.state.count
 
 ## 9. 重要生命周期限制
 
-- `update(action, mutation)` 把 action 关联到 `mutation` 内发出的通知；它本身不会调用 `notifyListeners`。
+- `update(action, mutation)` 成功后自动通知，Promise 在成功完成后通知；无需重复 notify。
 - `onCreate` 在首次 acquire 后运行，而不是在 construction 期间运行。
 - `onBind` 与 `onUnbind` 描述逻辑 Binding ID，而不是单个 hook。
 - Runtime pause 作用于整个 Runtime。继承 Runtime 的嵌套 Scope 不能只暂停自己的 ViewModel。

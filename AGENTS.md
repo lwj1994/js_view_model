@@ -25,10 +25,12 @@
 - parent ViewModel 通过 getter 和自己的 `viewModelBinding` 解析 child，不长期缓存 child。
 - parent 的 root owner source 必须实时传播给已解析 child；direct 与各 parent path
   分别计数，首 source `onBind`、末 source `onUnbind`。
-- 整段同步通知级联共享 transaction，并按 Binding identity 去重；异步通知开启新 transaction。
+- 整段同步通知级联共享 transaction，仅根 Binding 界面刷新去重，业务监听和 parent 通知逐条保留；异步通知开启新 transaction。
 - 依赖 getter 仅供 commit 后的 ViewModel action/生命周期使用，不得在 React render 或 selector 中读取。
 - React render 只能 `prepare` 纯对象；owner、`onCreate` 与 `onBind` 必须在 commit 后建立。
 - 保持 RN/Electron 平台入口，禁止新增 `@lwjlol/view_model/react` 或普通 React Web 支持承诺。Vue 桥接面向 Taro，不承诺 SSR 支持。
+- update 在同步/异步成功后自动通知；listenState/listenStateSelect 使用 (previous, current)；没有 onDependencyNotify。
+- 异步 override 使用传入的隔离 Runtime，不模拟跨平台隐式 Dart Zone；手动 override 务必 finally 恢复。
 - Taro 页面默认仅在卸载时释放 Binding；页面显隐暂停只能用于独立 Runtime。
 - 用户文档提供结构镜像的英文与中文版本；代码注释使用英文。
 

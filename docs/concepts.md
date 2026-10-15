@@ -230,7 +230,7 @@ An unkeyed child is private to that parent generation's dependency Binding. A ke
 
 Root ownership is source-aware. Every root Binding source currently owning the parent is propagated to children that parent has resolved, and later root bind/unbind changes are mirrored to those children in real time.
 
-Use `read` for imperative child calls. Use `watch` only when child notifications must bubble through `onDependencyNotify(child)` and then notify the parent. Synchronous propagation is transactionally deduplicated.
+Use read for imperative child calls, watch to forward every child notification to the parent. Only root visual refresh is coalesced; business events and parent notifications are preserved.
 
 ## Dependency access is commit-only
 
@@ -259,7 +259,7 @@ When two modules appear to require each other, prefer one of these designs:
 - move orchestration into a higher-level coordinator;
 - exchange events or ordinary function results instead of creating a reverse owner edge.
 
-A diamond-shaped graph is valid. Shared child notifications are deduplicated within one synchronous propagation transaction.
+A diamond-shaped graph is valid: each parent path forwards its event, while each root Binding refreshes once per synchronous transaction.
 
 ## Generations and recycle
 

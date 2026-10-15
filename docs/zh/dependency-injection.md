@@ -143,10 +143,10 @@ Runtime 已经按照 Spec identity 缓存当前结果，因此不需要应用层
 
 普通通知行为不同：
 
-| Parent getter                            | Child 普通通知 | Parent 行为                                                      |
-| ---------------------------------------- | -------------- | ---------------------------------------------------------------- |
-| `this.viewModelBinding.read(childSpec)`  | 不冒泡         | Parent 仍被保活，但不会因 child update 收到通知                  |
-| `this.viewModelBinding.watch(childSpec)` | 冒泡           | Runtime 调用 `parent.onDependencyNotify(child)`，然后通知 parent |
+| Parent getter                            | Child 普通通知 | Parent 行为                                     |
+| ---------------------------------------- | -------------- | ----------------------------------------------- |
+| `this.viewModelBinding.read(childSpec)`  | 不冒泡         | Parent 仍被保活，但不会因 child update 收到通知 |
+| `this.viewModelBinding.watch(childSpec)` | 冒泡           | Runtime 对每条 child 事件通知 parent            |
 
 parent 调用 child action，或只在命令式操作期间读取 child 时，使用 `read`。
 
@@ -173,16 +173,14 @@ class NetworkCoordinator extends ViewModel {
   protected override onCreate(): void {
     // Establish monitoring only after this parent has been acquired.
     void this.connectivity;
-  }
-
-  protected override onDependencyNotify(_child: ViewModel): void {
-    // Reconcile generation-owned resources if needed.
-    // The Runtime notifies this parent automatically after this returns.
+    this.viewModelBinding.listen(this.connectivityDeclaration, () => {
+      // Reconcile generation-owned resources here, without forwarding the event again.
+    });
   }
 }
 ```
 
-不要在 `onDependencyNotify` 中只为转发同一个 child event 而调用 `notifyListeners`。Runtime 已经负责该传播。如果 callback 还通过 `setState` commit parent state，该 state commit 会发出自己的通知。
+Watch 已经转发依赖事件。业务工作使用显式 listen，不要再次转发相同事件；单独提交 parent state 会产生自己的事件。
 
 ## Binding 托管的 side-effect listener
 
@@ -193,7 +191,7 @@ protected override onCreate(): void {
   this.viewModelBinding.listenStateSelect(
     connectivitySpec,
     (state) => state.online,
-    ({ current, previous }) => {
+    (previous, current) => {
       this.reconcileConnectivity(previous, current);
     },
   );
@@ -202,7 +200,7 @@ protected override onCreate(): void {
 
 - `listen(spec, callback)` 观察普通 ViewModel 通知。
 - `listenState(spec, callback)` 接收完整的 `StateViewModel` state change。
-- `listenStateSelect(spec, selector, callback, equals?)` 接收 selected state change；equality 默认使用 `Object.is`。
+- `listenStateSelect(spec, selector, callback, equals?)` 接收 selected state change；equality 使用显式 comparator、全局配置、`Object.is` 的优先级。
 
 这些 method 通过传入的 Spec 解析并 bind，因此会建立 parent-to-child lifetime edge，但不会启用 broad `watch` 冒泡。每个 method 都返回 disposer，可用于提前移除 listener；该 disposer 不会释放 Binding 对 generation 的 ownership。Binding 或 child generation handle dispose/recycle 时，也会自动移除 listener。
 
@@ -240,7 +238,7 @@ cached lookup 会把调用方耦合到 cache identity、creation order、miss ha
 - `onCreate`；
 - `onBind`；
 - `onPause` 与 `onResume`；
-- `onDependencyNotify`；
+- Binding 持有的业务回调；
 - 明确在 commit/acquire 后运行的其他内部工作。
 
 从技术上说，`onUnbind` 期间 `viewModelBinding` 仍然可用；但 teardown 代码不应仅仅因为一个 owner 正在离开，就建立新的依赖。应提前解析必需依赖，并为 generation 所拥有的资源登记 cleanup。

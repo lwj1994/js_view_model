@@ -118,3 +118,58 @@ try {
   await rm(temporary, { recursive: true, force: true });
 }
 console.log('package exports: ok');
+
+// Shared configuration, overrides, reset, and construction guards must survive conditional imports.
+const reported = [];
+esmCore.ViewModel.reset();
+esmCore.ViewModel.initialize({ config: { onError: (error) => reported.push(error) } });
+assert.equal(cjsCore.ViewModel.config, esmCore.ViewModel.config);
+const family = cjsCore.ViewModelSpec.arg(
+  CrossConditionViewModel,
+  () => new CrossConditionViewModel(),
+  { key: (id) => id },
+);
+const replacement = esmCore.ViewModelSpec.arg(
+  CrossConditionViewModel,
+  () => new CrossConditionViewModel(),
+  { key: (id) => `mock:${id}` },
+);
+await family.runWithOverride(replacement, async (runtime) => {
+  await Promise.resolve();
+  const vm = runtime.createBinding().read(family('shared'));
+  assert.equal(vm.key, 'mock:shared');
+});
+const resetRuntime = new esmCore.ViewModelRuntime();
+const resetVm = resetRuntime.createBinding().read(cjsTypedSpec);
+cjsCore.ViewModel.reset();
+assert.equal(resetVm.isDisposed, true);
+assert.equal(resetRuntime.countInstances(), 0);
+resetRuntime.dispose();
+assert.deepEqual(reported, []);
+console.log('cross-condition Flutter alignment: ok');
+
+// Global reset must finish BOTH module copies before either host re-subscribes.
+for (const resetter of [esmCore, cjsCore]) {
+  const runtimes = [new esmCore.ViewModelRuntime(), new cjsCore.ViewModelRuntime()];
+  try {
+    const owners = runtimes.map((runtime) => runtime.createBinding());
+    const old = owners.map((owner) => owner.read(cjsTypedSpec));
+    const recovered = [];
+    owners.forEach((owner, index) => {
+      owner.subscribe(cjsTypedSpec, 'read', () => {
+        assert.ok(old.every((vm) => vm.isDisposed));
+        recovered[index] = owner.read(cjsTypedSpec);
+      });
+    });
+    resetter.ViewModel.reset();
+    owners.forEach((owner, index) => {
+      assert.ok(recovered[index] instanceof CrossConditionViewModel);
+      assert.notEqual(recovered[index], old[index]);
+      assert.equal(recovered[index], owner.read(cjsTypedSpec));
+      assert.equal(recovered[index].isDisposed, false);
+    });
+  } finally {
+    runtimes.forEach((runtime) => runtime.dispose());
+  }
+}
+console.log('cross-condition reset recovery: ok');

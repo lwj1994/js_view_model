@@ -28,7 +28,9 @@ class ChildViewModel extends ViewModel {
 }
 
 class ParentViewModel extends ViewModel {
-  public dependencyNotifications = 0;
+  public get dependencyNotifications(): number {
+    return this.version;
+  }
 
   public constructor(private readonly childSpec: ViewModelSpec<ChildViewModel>) {
     super();
@@ -40,10 +42,6 @@ class ParentViewModel extends ViewModel {
 
   public get childWatch(): ChildViewModel {
     return this.viewModelBinding.watch(this.childSpec);
-  }
-
-  protected override onDependencyNotify(): void {
-    this.dependencyNotifications += 1;
   }
 }
 
@@ -84,7 +82,7 @@ describe('父子依赖图', () => {
     runtime.dispose();
   });
 
-  it('diamond graph 合法，并对共同祖先去重冒泡', () => {
+  it('diamond graph 保留每条依赖通知，仅合并根刷新', () => {
     class Leaf extends ViewModel {
       public change(): void {
         this.notifyListeners();
@@ -127,7 +125,7 @@ describe('父子依赖图', () => {
 
     leftLeaf.change();
 
-    expect(root.version).toBe(1);
+    expect(root.version).toBe(2);
     expect(root.left.version).toBe(1);
     expect(root.right.version).toBe(1);
     expect(update).toHaveBeenCalledTimes(1);
@@ -412,14 +410,16 @@ describe('父子依赖图', () => {
     runtime.dispose();
   });
 
-  it('direct listener 触发 sibling notify 时，整条同步级联只更新 parent/root 一次', () => {
+  it('direct listener 触发 sibling notify 时，parent 接收两次、root 刷新一次', () => {
     class Emitter extends ViewModel {
       public emit(): void {
         this.notifyListeners();
       }
     }
     class Parent extends ViewModel {
-      public dependencyNotifications = 0;
+      public get dependencyNotifications(): number {
+        return this.version;
+      }
 
       public constructor(
         private readonly firstSpec: ViewModelSpec<Emitter>,
@@ -434,10 +434,6 @@ describe('父子依赖图', () => {
 
       public get second(): Emitter {
         return this.viewModelBinding.watch(this.secondSpec);
-      }
-
-      protected override onDependencyNotify(): void {
-        this.dependencyNotifications += 1;
       }
     }
 
@@ -454,7 +450,7 @@ describe('父子依赖图', () => {
 
     first.emit();
 
-    expect(parent.dependencyNotifications).toBe(1);
+    expect(parent.dependencyNotifications).toBe(2);
     expect(update).toHaveBeenCalledTimes(1);
     runtime.dispose();
   });

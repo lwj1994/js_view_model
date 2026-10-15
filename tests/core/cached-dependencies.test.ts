@@ -36,7 +36,9 @@ class CachedChildViewModel extends ViewModel {
 }
 
 class CachedParentViewModel extends ViewModel {
-  public dependencyNotifications = 0;
+  public get dependencyNotifications(): number {
+    return this.version;
+  }
   public listenCallbacks = 0;
 
   public constructor(private readonly childSpec: ViewModelSpec<CachedChildViewModel>) {
@@ -63,10 +65,6 @@ class CachedParentViewModel extends ViewModel {
     this.viewModelBinding.listen(this.childSpec, () => {
       this.listenCallbacks += 1;
     });
-  }
-
-  protected override onDependencyNotify(): void {
-    this.dependencyNotifications += 1;
   }
 }
 
@@ -96,7 +94,7 @@ describe('cached/tag/listen 的 VM→VM DI 语义', () => {
     const parent = owner.read(parentSpec);
 
     expect(parent.cachedChild).toBe(shared);
-    expect(parent.taggedChildren).toEqual([taggedA, taggedB]);
+    expect(parent.taggedChildren).toEqual([taggedB, taggedA]);
     expect(shared.boundIds).toContain('owner');
     expect(taggedA.boundIds).toContain('owner');
     expect(taggedB.boundIds).toContain('owner');

@@ -1,5 +1,15 @@
 # 变更记录
 
+## 未发布
+
+- 按 Flutter 1.2.1 `c5e57d8` 对齐共享核心，包括 PR #82 与后续重入所有权、状态事件修复；保留不与 build 耦合的 Binding 生命周期。
+- **破坏性改动：** update 同步/异步成功后自动通知；移除 onDependencyNotify；listenState/listenStateSelect 使用 (previous, current)；业务通知不去重，仅合并根界面刷新。
+- 增加 arg1-4 family、可恢复 override、隔离 Runtime 异步覆盖、全局配置/观察者/错误报告、状态历史、unbind、局部界面暂停和调试快照。
+- 提交精确 owner/edge 后再运行回调，修复重入 rollback、过期 release、批量缓存原子性、错误 key 命中回退与跨 ESM/CJS 身份。
+- 更新中英文 API、教程、skill 和迁移矩阵；补充核心/React/Vue/产物回归。
+- 修复开发依赖审计：Vitest 4.1.11，以及兼容的 brace-expansion、source-map-js 锁文件更新。
+- 不新增 Flutter 生成器/DevTools/Widget API，也不新增 React Web/SSR 入口；异步覆盖明确使用传入 Runtime。
+
 [English](./CHANGELOG.md)
 
 本文件记录项目的显著变更。

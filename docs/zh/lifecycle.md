@@ -148,7 +148,7 @@ ViewModel hooks 具有精确语义：
 
 在当前 generation 永久结束时运行一次。此时 ViewModel 已经标记为 disposed，因此不能再解析新依赖或发送新 state。
 
-`onDispose` 之后，通过 `addDispose` 注册的 cleanup function 会按注册顺序的逆序运行。Runtime 会尝试所有清理路径，并通过 `AggregateError` 聚合多个失败，而不是因一个错误放弃剩余清理。
+onDispose 后，addDispose 登记按逆序执行。错误交给 config.onError，不影响剩余清理。
 
 ## 自然零 owner 销毁
 
@@ -162,11 +162,7 @@ parent generation dispose 时，也会 dispose 它的 generation-owned dependenc
 
 ## 通知与 generation snapshot
 
-`notifyListeners(action?)` 会递增 ViewModel version，并同步进入 Runtime propagation transaction。在同一个 transaction 中，Runtime 会去重：
-
-- 同一 handle 的重复通知 delivery；
-- parent dependency bubbling；
-- 同一个 queued owner callback。
+notifyListeners 递增 version 并开启同步 transaction。每条业务通知与 parent 依赖事件保留；仅根 Binding 刷新请求去重，宿主订阅在 transaction 末读取最终快照。异步事件开启新 transaction。
 
 `watch` snapshot 包含 ViewModel version。`read` snapshot 只包含 generation/lifecycle identity。因此：
 
@@ -179,7 +175,7 @@ parent generation dispose 时，也会 dispose 它的 generation-owned dependenc
 
 ## Runtime 级 pause token
 
-Pause 是 `ViewModelRuntime` 的属性，不属于 Scope 或单个 ViewModel owner。
+Runtime pause 聚合应用/窗口原因并触发 VM hook；单个 owner 的界面暂停使用 binding.pause/resume，不暂停共享 VM 或业务监听。
 
 ```ts
 const applicationBackground = Symbol('application-background');

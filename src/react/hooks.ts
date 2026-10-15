@@ -1,3 +1,4 @@
+import { getViewModelConfig } from '../core/config.js';
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 
 import type {
@@ -56,6 +57,7 @@ interface SelectorCache<T extends ViewModel, Selection> {
   readonly spec: ViewModelSpec<T>;
   readonly viewModel: T;
   readonly selector: ViewModelSelector<T, Selection>;
+  readonly compare: ViewModelEquality<Selection>;
   version: unknown;
   readonly snapshot: SelectorSnapshot<Selection>;
 }
@@ -71,9 +73,10 @@ interface SelectorSnapshot<Selection> {
 export function useViewModelSelector<T extends ViewModel, Selection>(
   spec: ViewModelSpec<T>,
   selector: ViewModelSelector<T, Selection>,
-  equals: ViewModelEquality<Selection> = Object.is,
+  equals?: ViewModelEquality<Selection>,
 ): Selection {
   const binding = useViewModelBinding();
+  const compare = equals ?? getViewModelConfig().equals ?? Object.is;
   const viewModel = binding.prepare(spec);
   const cache = useRef<SelectorCache<T, Selection> | undefined>(undefined);
   const subscribe = useCallback(
@@ -95,6 +98,7 @@ export function useViewModelSelector<T extends ViewModel, Selection>(
       previous.spec === spec &&
       previous.viewModel === currentViewModel &&
       previous.selector === selector &&
+      previous.compare === compare &&
       Object.is(previous.version, version)
     ) {
       return previous.snapshot;
@@ -106,13 +110,14 @@ export function useViewModelSelector<T extends ViewModel, Selection>(
       previous.binding === binding &&
       previous.spec === spec &&
       previous.viewModel === currentViewModel &&
-      equals(previous.snapshot.value, next)
+      compare(previous.snapshot.value, next)
     ) {
       cache.current = {
         binding,
         spec,
         viewModel: currentViewModel,
         selector,
+        compare,
         version,
         snapshot: previous.snapshot,
       };
@@ -125,11 +130,12 @@ export function useViewModelSelector<T extends ViewModel, Selection>(
       spec,
       viewModel: currentViewModel,
       selector,
+      compare,
       version,
       snapshot,
     };
     return snapshot;
-  }, [binding, equals, selector, spec, viewModel]);
+  }, [binding, compare, selector, spec, viewModel]);
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).value;
 }

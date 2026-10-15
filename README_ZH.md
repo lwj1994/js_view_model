@@ -1,5 +1,7 @@
 # view_model：状态管理、依赖注入与模块架构
 
+> 未发布：共享核心已对齐 Flutter 1.2.1。升级前请阅读 [迁移与覆盖说明](./docs/zh/flutter-comparison.md)，尤其是 update、listenState 和通知传播的破坏性改动。
+
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -298,7 +300,7 @@ Electron main 不使用 hooks。使用 `ViewModelRuntime` 与 plain Binding，�
 - 优先使用 `viewModelSpec(MyViewModel, () => new MyViewModel(), options)`。在一个 Runtime 内，显式 identity 是 **ViewModel type + effective key**；省略 key 时它属于 Binding 私有。相同 type 与 key 的独立显式 Spec 共享一个 generation。
 - Spec 应在模块作用域保持稳定，避免 render 期间分配，并让 builder/options 一致。builder-only 形式作为兼容 fallback 仍然保留，其每个 Spec 都会获得独立 identity token。
 - `watch` 与 `read` 都会创建/解析实例并建立生命周期 owner；只有 `watch` 传播普通 ViewModel 通知。
-- 一次完整的同步通知级联共享同一 transaction。同一 callback 投递会按 Binding 去重，不同 Binding 仍分别收到 update；异步通知会开启新 transaction。
+- 一次完整的同步通知级联共享同一 transaction。界面刷新按 Binding 去重，业务监听和 parent 通知逐条保留，不同 Binding 仍分别收到 update；异步通知会开启新 transaction。
 - unkeyed 实例属于 Binding 私有。显式 key 让同一显式 ViewModel type identity 在同一 Runtime 的多个 Binding 间共享。`aliveForever` 必须带显式 key。
 - builder 与 constructor 必须纯净。计时器、IPC、原生订阅等资源从 `onCreate` 启动，并用 `addDispose` 登记清理。
 - child module 应通过不缓存的 `viewModelBinding.read/watch` getter 解析。getter 只能在 commit 后由 ViewModel action、生命周期或内部协作访问，不得从 React render 或 selector 展开。

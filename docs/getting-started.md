@@ -260,7 +260,7 @@ Nested Scopes inherit the parent Runtime by default but create a different Bindi
 
 ## 9. Important lifecycle limits
 
-- `update(action, mutation)` associates an action with notifications emitted inside `mutation`; it does not call `notifyListeners` by itself.
+- `update(action, mutation)` automatically notifies after sync or async success; do not add a redundant notify.
 - `onCreate` runs after the first acquire, not during construction.
 - `onBind` and `onUnbind` describe logical Binding IDs, not individual hooks.
 - Runtime pause is Runtime-wide. A nested Scope that inherits a Runtime cannot pause only its own ViewModels.

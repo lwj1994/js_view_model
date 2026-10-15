@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  StateViewModel,
-  ViewModelDisposedError,
-  ViewModelRuntime,
-  viewModelSpec,
-} from '../../src/core/index.js';
+import { StateViewModel, ViewModelRuntime, viewModelSpec } from '../../src/core/index.js';
 
 interface CounterState {
   readonly count: number;
@@ -56,7 +51,7 @@ describe('StateViewModel', () => {
     runtime.dispose();
   });
 
-  it('销毁后状态修改必须原子失败，不能先污染 state 或通知 state listener', () => {
+  it('销毁后状态修改忽略，不能污染 state、调用 updater 或通知 listener', () => {
     const runtime = new ViewModelRuntime();
     const binding = runtime.createBinding();
     const spec = viewModelSpec(() => new CounterStateViewModel());
@@ -67,10 +62,10 @@ describe('StateViewModel', () => {
     const stateBeforeDispose = viewModel.state;
     runtime.recycle(viewModel);
 
-    expect(() => viewModel.increment()).toThrow(ViewModelDisposedError);
+    expect(viewModel.increment()).toBe(false);
     expect(viewModel.state).toBe(stateBeforeDispose);
     expect(listener).not.toHaveBeenCalled();
-    expect(() => viewModel.updateWith(updater)).toThrow(ViewModelDisposedError);
+    expect(viewModel.updateWith(updater)).toBe(false);
     expect(updater).not.toHaveBeenCalled();
     runtime.dispose();
   });

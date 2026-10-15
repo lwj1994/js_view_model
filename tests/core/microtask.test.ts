@@ -84,6 +84,9 @@ describe('微任务调度兼容', () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     vi.stubGlobal('queueMicrotask', undefined);
     const failure = new Error('onDispose failure');
+    const reported = vi.fn();
+    ViewModel.reset();
+    ViewModel.initialize({ config: { onError: reported } });
     class Failing extends ViewModel {
       protected override onDispose(): void {
         throw failure;
@@ -99,8 +102,9 @@ describe('微任务调度兼容', () => {
       await Promise.resolve();
       expect(bad.isDisposed).toBe(true);
       expect(good.isDisposed).toBe(true);
-      expect(vi.getTimerCount()).toBe(1);
-      expect(() => vi.runAllTimers()).toThrow(AggregateError);
+      expect(reported).toHaveBeenCalledWith(failure, 'dispose', 'onDispose');
+      expect(vi.getTimerCount()).toBe(0);
+      ViewModel.reset();
     } finally {
       runtime.dispose();
     }

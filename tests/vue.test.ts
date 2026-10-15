@@ -139,3 +139,92 @@ describe('Vue bridge', () => {
     runtime.dispose();
   });
 });
+
+it('Vue selectors honor global equality and explicit local overrides', () => {
+  ViewModel.reset();
+  ViewModel.initialize({ config: { equals: () => true } });
+  const effects = effectScope();
+  const runtime = new ViewModelRuntime();
+  try {
+    effects.run(() => {
+      useViewModelScope({ runtime });
+      const vm = useViewModel(spec);
+      const global = useViewModelSelector(spec, (vm) => vm.count);
+      const local = useViewModelSelector(spec, (vm) => vm.count, Object.is);
+      vm.value.increment();
+      expect(global.value).toBe(0);
+      expect(local.value).toBe(1);
+    });
+  } finally {
+    effects.stop();
+    runtime.dispose();
+    ViewModel.reset();
+  }
+});
+
+it.each(['runtime', 'global'] as const)(
+  'Vue composables resubscribe after repeated %s resets',
+  (kind) => {
+    ViewModel.reset();
+    const effects = effectScope();
+    const runtime = new ViewModelRuntime();
+    try {
+      effects.run(() => {
+        const owner = useViewModelScope({ runtime });
+        const vm = useViewModel(spec);
+        const read = useReadViewModel(spec);
+        const parity = useViewModelSelector(spec, (vm) => vm.count % 2);
+        let renders = 0,
+          reads = 0,
+          selections = 0;
+        watchEffect(
+          () => {
+            void vm.value.count;
+            renders++;
+          },
+          { flush: 'sync' },
+        );
+        watchEffect(
+          () => {
+            void read.value;
+            reads++;
+          },
+          { flush: 'sync' },
+        );
+        watchEffect(
+          () => {
+            void parity.value;
+            selections++;
+          },
+          { flush: 'sync' },
+        );
+        for (let index = 0; index < 2; index++) {
+          const old = vm.value;
+          const before = [renders, reads, selections];
+          runtime.pause();
+          owner.binding.pause();
+          if (kind === 'runtime') runtime.reset();
+          else ViewModel.reset();
+          expect(old.isDisposed).toBe(true);
+          expect(vm.value).not.toBe(old);
+          expect(vm.value.isDisposed).toBe(false);
+          expect(read.value).toBe(vm.value);
+          expect([renders, reads, selections]).toEqual([before[0]! + 1, before[1]! + 1, before[2]]);
+          vm.value.increment();
+          expect(parity.value).toBe(1);
+          expect([renders, reads, selections]).toEqual([
+            before[0]! + 2,
+            before[1]! + 1,
+            before[2]! + 1,
+          ]);
+          vm.value.increment();
+          expect(parity.value).toBe(0);
+        }
+      });
+    } finally {
+      effects.stop();
+      runtime.dispose();
+      ViewModel.reset();
+    }
+  },
+);

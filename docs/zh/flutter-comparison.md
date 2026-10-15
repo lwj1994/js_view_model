@@ -1,116 +1,128 @@
-# 与 Flutter `view_model` 的差异
+# Flutter 对齐与迁移
 
 [English](../flutter-comparison.md) · [文档索引](./README.md)
 
-这个 TypeScript 包与 [`lwj1994/flutter_view_model`](https://github.com/lwj1994/flutter_view_model) 共享同一架构方向：功能模块都可以成为受管理的 ViewModel，Binding 持有实例，依赖通过 ViewModel getter 按需解析，普通实例自动销毁。
+共享核心语义以 `flutter_view_model` **1.2.1** 为基准，固定到
+[`c5e57d8`](https://github.com/lwj1994/flutter_view_model/tree/c5e57d8cb28922497901cf2b9ffb082221771ad3)。
+范围包括 PR #82 及后续所有权、状态重入修复，不只是 API 名称。
+以下改动**尚未发布**，npm `0.3.1` 不包含这些能力。
 
-但它不是 API 直译。TypeScript runtime identity、React 调度以及 React Native/Electron 生命周期要求不同的契约。
+## 共享核心覆盖
 
-## 概念映射
+| Flutter 约定                                | JavaScript 实现                                                                    | 回归证据                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 类型 + 有效 key；unkeyed 属于 Binding       | 显式类 token、对象/基础类型 key、O(1) 已持有 handle 复用                           | `identity.test.ts`、`diagnostics.test.ts`                                        |
+| `ViewModelSpec.arg/arg2/arg3/arg4`          | 类型化可调用 family；参数控制构造，不自动参与身份                                  | `spec-overrides.test.ts`                                                         |
+| Override/proxy 解析                         | 可恢复的 `overrideWith`、兼容 `setProxy/clearProxy`、拒绝环、有效 key/tag/保活策略 | `spec-overrides.test.ts`                                                         |
+| 异步作用域覆盖                              | 回调显式接收隔离 Runtime；区别见下文                                               | `spec-overrides.test.ts`                                                         |
+| Getter DI、`read`/`watch`、订阅升级         | generation 持有稳定 Binding；不按 build 清理依赖                                   | `dependencies.test.ts`、`flutter-parity.test.ts`                                 |
+| 保留所有依赖通知、合并根刷新                | parent 通知和业务监听不去重；同一 transaction 每个根刷新一次                       | `notifications.test.ts`、`flutter-parity.test.ts`                                |
+| 状态事件顺序、移除监听                      | 同步重入时按 FIFO 投递，普通 notify 不重放旧 diff                                  | `flutter-parity.test.ts`、`flutter-api.test.ts`                                  |
+| `listenState(previous, current)` 与选择监听 | 位置参数、不虚构 null、随 Binding 清理                                             | `flutter-api.test.ts`                                                            |
+| `update`、监听、状态历史、判等              | 同步/异步成功后自动通知；局部/全局/`Object.is` 判等                                | `flutter-api.test.ts`、`electron/equality.test.tsx`、`vue.test.ts`               |
+| direct 与各 parent 路径独立计数             | 使用精确登记身份；回调前提交账本；取消过期 release                                 | `ownership-commit.test.ts`                                                       |
+| 最新创建缓存、tag 批量查询                  | 优先 key、key 缺失再查 tag、最新优先、预检与回滚                                   | `cached-dependencies.test.ts`、`diagnostics.test.ts`、`ownership-commit.test.ts` |
+| 强制 recycle、unbind、reset、保活           | 重入前清缓存、仅删除旧登记、完整清理独占依赖图                                     | `ownership-commit.test.ts`、`flutter-api.test.ts`                                |
+| 配置、生命周期观察者、错误报告              | `ViewModel.initialize/config/reset`、观察者、`ErrorType`、安全错误接收器           | `flutter-api.test.ts`                                                            |
+| 调试图与计数                                | `runtime.getDiagnostics/countInstances`、factory/tag 歧义提示                      | `diagnostics.test.ts`、`flutter-api.test.ts`                                     |
+| 暂停与恢复                                  | Runtime 应用/窗口 token，加独立 Binding 界面暂停 token                             | `flutter-api.test.ts`、各平台生命周期测试                                        |
 
-| Flutter `view_model`          | TypeScript `view_model`                  | 关键差异                                                                         |
-| ----------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------- |
-| `class X with ViewModel`      | `class X extends ViewModel`              | TypeScript 使用继承，不是 Dart mixin。                                           |
-| `StateViewModel<T>`           | `StateViewModel<TState>`                 | 判等默认使用 `Object.is`，没有全局 equality 配置。                               |
-| `ViewModelSpec<T>`            | `ViewModelSpec<T>` / `viewModelSpec()`   | TypeScript 泛型在运行时不存在，因此需要显式传入 ViewModel class。                |
-| `ViewModelBinding` host mixin | `runtime.createBinding()`                | plain host 显式拥有并 dispose Binding。                                          |
-| Widget mixins                 | 平台 `ViewModelScope` + hooks            | Scope 把 React commit/unmount 映射到一个 Binding owner。                         |
-| `watch(spec)`                 | `binding.watch` / `useViewModel`         | 两者都建立 owner；watch 还传播普通通知。                                         |
-| `read(spec)`                  | `binding.read` / `useReadViewModel`      | read 仍建立 owner；adapter 需要时仍响应 generation 替换。                        |
-| Selector widget               | `useViewModelSelector`                   | selector 接收 ViewModel，默认使用 `Object.is` 判等。                             |
-| `listen` / state listener     | Binding `listen*` method                 | Binding/handle 会自动 cleanup；每个 method 也返回手动 disposer。                 |
-| cached/tag lookup             | Binding cached method                    | target 是显式 class 或 Spec；lookup 不会创建缺失 generation。                    |
-| keyed sharing                 | 显式 type + key                          | 同一 Runtime 内，显式 class 与 key 相同的独立 Spec 会共享。                      |
-| child getter DI               | `this.viewModelBinding.read/watch(spec)` | builder、constructor、React render、selector 均禁止访问 getter。                 |
-| parent source 传播            | generation-owned dependency Binding      | 当前 external root Binding source 会镜像给 child，并按 ownership path 独立计数。 |
-| 同步通知                      | update propagation transaction           | 一次完整同步级联内，Binding delivery 按 owner/callback identity 去重。           |
-| `recycle(vm)`                 | `runtime.recycle(vmOrSpec)`              | unkeyed Spec target 可能回收多个 Binding-private generation。                    |
-| pause/resume provider         | Runtime pause token                      | pause 作用于整个 Runtime，不是 route/ticker 或 Scope 局部能力。                  |
+未注明目录的测试位于 `tests/core/`，所有测试串行执行。
+`scripts/test-package-exports.mjs` 还针对构建产物验证 ESM/CJS 的配置、覆盖、reset 和类型身份。
 
-## 优先使用显式 type + key
+## 从 0.3.1 迁移的破坏性改动
 
-TypeScript 泛型会被擦除，因此 package 无法从 `ViewModelSpec<T>` 恢复 `T`。应把 ViewModel class 作为显式 runtime identity 传入：
-
-```ts
-const first = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
-  key: 'session',
-});
-const second = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
-  key: 'session',
-});
-
-binding.read(first) === binding.read(second);
-```
-
-显式 type 不带 key 时，generation 仍由单个 Binding 私有；显式 type 带 key 时，会由同一 Runtime 内的 Binding 共享。`withKey` 会保留显式 type identity：
-
-```ts
-const userSpec = viewModelSpec(UserViewModel, () => new UserViewModel());
-const adaSpec = userSpec.withKey('ada');
-const graceSpec = userSpec.withKey('grace');
-```
-
-builder-only overload 仍作为兼容 fallback 保留：
-
-```ts
-const legacySpec = viewModelSpec(() => new SessionViewModel());
-```
-
-每个独立创建的 builder-only base Spec 都有唯一 token，因此即使 key 相同，不同 builder-only Spec 也不会共享。此类 Spec 应稳定声明在 module scope；需要共享 identity 时，应优先使用显式 type + key。
-
-## 同步传播保持 Flutter transaction 语义
-
-`notifyListeners` 会在整段同步通知级联之外开启 propagation transaction。direct listener、dependency 冒泡以及嵌套同步通知都会进入同一 transaction。
-
-Binding delivery 按 Binding owner identity 与 callback identity 的组合去重。同一 callback 经由同一个 Binding 多次到达时只运行一次；两个不同 Binding 即使复用同一 callback，也会各运行一次。同一 parent generation 在该 transaction 中也最多冒泡一次。后续 microtask 或 Promise continuation 会开启新的 transaction。
-
-每个 parent generation 都拥有一个稳定的 dependency Binding。解析 child 后，parent 当前所有 external root Binding source 会镜像给该 child；root 后续增加或移除时也会同步。direct ownership source 与每条 parent path 都独立计数：某个 Binding id 的首个 source 会触发 `onBind(id)`，最后一个 source 移除后才触发 `onUnbind(id)`。`read` 会建立这条生命周期边，但不冒泡普通通知；`watch` 还会冒泡 child 通知。
-
-## cached lookup 与 listener 保持 ownership
-
-普通依赖注入应保留 Spec，并调用 `read(spec)` 或 `watch(spec)`。cached method 是高级 lookup-only API，只查询已经由其他路径创建的 generation。target 可以是显式 ViewModel class 或 Spec：
-
-- `readCached` / `watchCached` 返回一个 lookup match，未命中时抛错；
-- `maybeReadCached` / `maybeWatchCached` 未命中时返回 `undefined`；
-- `readCachesByTag` / `watchCachesByTag` 返回所有匹配项，未命中时返回空数组。
-
-`tag` 只是分组 label，不参与 identity。cached method 都不会运行 builder。命中后仍会 bind generation，并建立与 Spec-based resolution 相同的 parent lifetime edge。只有 `watch` 变体会冒泡普通 child 通知。
-
-`binding.listen`、`listenState` 与 `listenStateSelect` 通过 Spec 解析并安装 side-effect listener，但不会增加 broad watch propagation。Binding 或 generation handle dispose/recycle 时会自动移除这些 listener；每个返回的 disposer 也可用于提前移除。底层 `viewModel.subscribe` / `subscribeState` API 仍需手动管理。
-
-## `update` 不会自动通知
-
-Flutter 的便利 update API 可能自动发布变化。TypeScript 方法目的更窄：它只为 mutation 内同步发出的通知附加 action 值。
+`update` 在操作成功后自动通知；Promise 要等成功完成。
+删除 `update` 内结尾处重复的 `notifyListeners()`，除非确实需要额外事件。
+不可变状态直接使用 `setState/updateState`，不必再包一层 `update`。
 
 ```ts
 this.update('cart.add', () => {
   this.items.push(item);
-  this.notifyListeners();
+});
+await this.update('cart.reload', async () => {
+  this.items = await loadItems();
 });
 ```
 
-省略 `notifyListeners()` 只会静默修改字段。`StateViewModel` action 通常使用 `setState` 或 `updateState`；判等得到新快照时，它们会自动通知。
+已移除 `onDependencyNotify`。watch 的 child 自动通知 parent。
+业务反应应在 `onCreate` 中使用 `this.viewModelBinding.listen(childSpec, callback)`，
+不要用手动转发循环替代旧 hook。
 
-## Scope 是 React render/commit 的适配层
+```ts
+binding.listenState(counterSpec, (previous, current) => {
+  recordChange(previous, current);
+});
+binding.listenStateSelect(
+  counterSpec,
+  (state) => state.count,
+  (previous, current) => {
+    recordCount(previous, current);
+  },
+);
+```
 
-Flutter widget mixin 与本包 React Scope/hooks 都解决 owner 问题，但宿主生命周期不同。React render 可能被重放或放弃，因此 builder 可在 render 中准备纯对象，而 owner、`onCreate`、`onBind` 只能在 commit 后开始。
+`listenState`/`listenStateSelect` 从对象参数改为位置参数。
+底层 `subscribeState(({ previous, current }) => ...)` 则保留对象参数。
+菱形依赖可能产生两次 parent 事件，只有根界面刷新合并。
+监听、生命周期和清理错误交给 `config.onError`，不再同步抛 `AggregateError`。
+`onCreate/onBind` 抛错会报告，但不会因此自动销毁仍有效的 owner。
+构造、依赖环、类型错误和无效 owner 仍会拒绝操作。
+销毁后的 `notifyListeners` 和状态写入忽略执行，`updateState` 也不运行 updater；
+依赖解析、新订阅和 `update` 仍拒绝已结束的 generation。
 
-应用级 DI 不需要 Scope。Electron main、启动逻辑、后台服务与测试直接使用同一个 core Runtime 创建的 plain Binding。
+## 参数化 Spec 与有效身份
 
-## 刻意没有移植的 API
+```ts
+const userSpec = ViewModelSpec.arg(UserViewModel, (id: string) => new UserViewModel(id), {
+  key: (id) => id,
+  tag: () => 'users',
+});
+const user = binding.watch(userSpec('ada'));
+```
 
-这个 TypeScript 包目前没有：
+没有 key 时，同一 Binding 内同一显式类的不同参数仍复用首个实例。
+同一 Runtime 内，显式类 + key 相同就共享，包括不同 Spec；后来的 builder 不替换已存在 generation。
+key 使用 JavaScript Map 身份：对象按引用比较，不模拟 Dart 的重载相等。
+`undefined` 表示 unkeyed，`null` 被拒绝。tag 只分组，不决定身份。
+`aliveForever` 必须提供显式 key。
 
-- `ViewModelSpec.arg/arg2/arg3/arg4`；
-- proxy/override 或代码生成注解；
-- `ChangeNotifierViewModel`；
-- 全局 `initialize`、`reset`、equality、logging 或 error 配置；
-- DevTools 协议；
-- Flutter route/ticker lifecycle provider；
-- Widget mixin。
+## Override 作用域：显式 Runtime，不是隐式 Dart Zone
 
-不要通过未记录的 import 模拟这些能力。应使用当前导出的 core 与平台 API，或明确提出库级变更。
+```ts
+await userSpec.runWithOverride(fakeUserSpec, async (runtime) => {
+  const binding = runtime.createBinding();
+  await prepareFixture();
+  const user = binding.read(userSpec('ada'));
+  // Nested getters use the same Runtime and override context.
+  await verifyUser(user);
+});
+```
 
-## 平台边界
+多项覆盖使用 `ViewModelRuntime.runWithOverrides([[source, replacement]], callback)`。
+实例方法 `runtime.runWithOverrides` 继承该 Runtime 的 factory 选择。
+每个 helper 都提供**新建、缓存隔离的 Runtime**，快照覆盖上下文，并在回调成功或失败后销毁。
+整个异步任务都须使用传入 Runtime；原有无关 Binding 不会自动进入该作用域。
+这不是透明的 Dart Zone 移植，并发任务不会互相替换 factory 选择。
 
-TypeScript 包只服务 React Native 与 Electron。Electron main、preload、renderer 是不同 realm，应通过 IPC 传递可序列化 DTO 与事件。内部共用 React 层不是公共 Web 入口，也不代表支持普通 React Web、SSR 或 RSC。
+`spec.overrideWith(replacement)` 是手动、当前 JS realm 全局覆盖，返回幂等恢复函数。
+务必在 `finally` 恢复，不要让独立异步任务重叠使用它。
+覆盖只改变后续解析，不替换已存在 generation。
+`withKey` 产生独立的具体声明；需要覆盖时对该声明安装 override，或使用参数化 family。
+
+## 宿主差异边界
+
+核心依赖生命周期跟随 Binding 所有权，**不收集或清理 build/render 依赖**。
+React render 只准备纯对象，owner、`onCreate` 和 `onBind` 在 commit 后建立。
+依赖 getter 用于 commit 后的 action/生命周期，不用于 render 或 selector。
+自然零 owner 销毁延迟到 microtask，以容纳 React 立即重新挂载；强制 recycle/reset/Runtime dispose 同步完成。
+
+`binding.pause/resume` 只暂停该 Binding 的界面刷新，不影响其他 owner、状态和业务监听。
+`runtime.pause/resume` 还触发 VM `onPause/onResume`，聚合应用/窗口 token。
+它们都不是 Flutter route/ticker provider。
+
+本库不导出 Flutter Widget mixin、`ChangeNotifier`、Dart Stream、注解/代码生成或 Flutter
+DevTools UI/协议。调试信息是普通快照，不是 DevTools 扩展。
+JavaScript 宿主对应现有 React Native/Electron Scope hooks、Vue 响应式桥接与 Taro 页面生命周期。
+没有新增 React Web、SSR 或 RSC 支持。Electron main/preload/renderer 仍是不同 realm，应通过 IPC
+传递可序列化 DTO，不共享 VM 对象。
