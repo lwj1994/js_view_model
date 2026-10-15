@@ -147,3 +147,29 @@ assert.equal(resetRuntime.countInstances(), 0);
 resetRuntime.dispose();
 assert.deepEqual(reported, []);
 console.log('cross-condition Flutter alignment: ok');
+
+// Global reset must finish BOTH module copies before either host re-subscribes.
+for (const resetter of [esmCore, cjsCore]) {
+  const runtimes = [new esmCore.ViewModelRuntime(), new cjsCore.ViewModelRuntime()];
+  try {
+    const owners = runtimes.map((runtime) => runtime.createBinding());
+    const old = owners.map((owner) => owner.read(cjsTypedSpec));
+    const recovered = [];
+    owners.forEach((owner, index) => {
+      owner.subscribe(cjsTypedSpec, 'read', () => {
+        assert.ok(old.every((vm) => vm.isDisposed));
+        recovered[index] = owner.read(cjsTypedSpec);
+      });
+    });
+    resetter.ViewModel.reset();
+    owners.forEach((owner, index) => {
+      assert.ok(recovered[index] instanceof CrossConditionViewModel);
+      assert.notEqual(recovered[index], old[index]);
+      assert.equal(recovered[index], owner.read(cjsTypedSpec));
+      assert.equal(recovered[index].isDisposed, false);
+    });
+  } finally {
+    runtimes.forEach((runtime) => runtime.dispose());
+  }
+}
+console.log('cross-condition reset recovery: ok');

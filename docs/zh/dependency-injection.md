@@ -191,7 +191,7 @@ protected override onCreate(): void {
   this.viewModelBinding.listenStateSelect(
     connectivitySpec,
     (state) => state.online,
-    ({ current, previous }) => {
+    (previous, current) => {
       this.reconcileConnectivity(previous, current);
     },
   );

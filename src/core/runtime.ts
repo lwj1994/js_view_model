@@ -6,6 +6,7 @@ import {
 import { scheduleMicrotask } from '../shared/microtask.js';
 import {
   ErrorType,
+  afterViewModelReset,
   isViewModelResetting,
   registerViewModelReset,
   reportViewModelError,
@@ -287,6 +288,7 @@ export class ViewModelRuntime {
       this.#disposeAll();
     } finally {
       this.#resetting = false;
+      this.#flushDisposalNotifications();
     }
   }
 
@@ -832,8 +834,18 @@ export class ViewModelRuntime {
     } finally {
       this.#disposalDepth -= 1;
       this.#unregisterWhenEmpty();
-      if (this.#disposalDepth === 0) {
-        const notifications = this.#disposalNotifications.splice(0);
+      this.#flushDisposalNotifications();
+    }
+  }
+  #flushDisposalNotifications(): void {
+    // Keep terminal subscriptions until all old generations, edges, and pause
+    // state are cleared. A global reset also waits for the other Runtimes.
+    if (this.#disposalDepth !== 0 || this.#resetting) return;
+    const notifications = this.#disposalNotifications.splice(0);
+    if (this.#disposed || notifications.length === 0) return;
+    afterViewModelReset(() => {
+      if (this.#disposed) return;
+      runInViewModelUpdateTransaction(() => {
         for (const notify of notifications) {
           try {
             notify();
@@ -841,8 +853,8 @@ export class ViewModelRuntime {
             reportViewModelError(error, ErrorType.listener, 'generation disposal');
           }
         }
-      }
-    }
+      });
+    });
   }
   #disposeAll(): void {
     this.#pauseTokens.clear();

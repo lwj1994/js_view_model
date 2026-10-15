@@ -42,6 +42,7 @@ interface ConfigurationState {
   config: ViewModelConfig;
   readonly lifecycles: Set<ViewModelLifecycle>;
   readonly resets: Set<ViewModelDispose>;
+  readonly resetCompletions: Set<ViewModelDispose>;
 }
 
 const CONFIGURATION = Symbol.for('view_model.Configuration.v1');
@@ -51,6 +52,7 @@ const local: ConfigurationState = {
   config: {},
   lifecycles: new Set(),
   resets: new Set(),
+  resetCompletions: new Set(),
 };
 
 function sharedState(): ConfigurationState {
@@ -101,6 +103,13 @@ export function isViewModelResetting(): boolean {
   return sharedState().resetting;
 }
 
+/** Deliver recovery callbacks only after every Runtime and global configuration is reset. @internal */
+export function afterViewModelReset(callback: ViewModelDispose): void {
+  const state = sharedState();
+  if (state.resetting) state.resetCompletions.add(callback);
+  else callback();
+}
+
 /** @internal */
 export function resetViewModels(): void {
   const state = sharedState();
@@ -119,6 +128,15 @@ export function resetViewModels(): void {
     state.initialized = false;
     state.config = {};
     state.lifecycles.clear();
+    const completions = [...state.resetCompletions];
+    state.resetCompletions.clear();
+    for (const complete of completions) {
+      try {
+        complete();
+      } catch (error) {
+        reportViewModelError(error, ErrorType.listener, 'reset completion');
+      }
+    }
   }
 }
 
