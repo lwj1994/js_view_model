@@ -1,160 +1,130 @@
-# Differences from Flutter `view_model`
+# Flutter alignment and migration
 
 [简体中文](./zh/flutter-comparison.md) · [Documentation index](./README.md)
 
-This TypeScript package shares the architectural direction of
-[`lwj1994/flutter_view_model`](https://github.com/lwj1994/flutter_view_model):
-functional modules can be managed ViewModels, bindings own instances,
-dependencies resolve lazily through ViewModel getters, and ordinary instances
-dispose automatically.
+The shared-core contract is aligned to `flutter_view_model` **1.2.1**, pinned to
+[`c5e57d8`](https://github.com/lwj1994/flutter_view_model/tree/c5e57d8cb28922497901cf2b9ffb082221771ad3).
+This includes PR #82 and the subsequent ownership and reentrant-state fixes, not just API names.
+The changes below are **unreleased**; npm `0.3.1` does not contain them.
 
-It is not an API port. TypeScript runtime identity, React scheduling, and
-React Native/Electron lifecycle constraints require different contracts.
+## Shared-core coverage
 
-## Concept mapping
+| Flutter contract                                        | JavaScript implementation                                                                                  | Regression evidence                                                              |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Type + effective key; unkeyed per Binding               | Explicit class token, object/primitive keys, O(1) owned-handle reuse                                       | `identity.test.ts`, `diagnostics.test.ts`                                        |
+| `ViewModelSpec.arg/arg2/arg3/arg4`                      | Typed callable families; arguments configure construction, not identity                                    | `spec-overrides.test.ts`                                                         |
+| Override/proxy resolution                               | Restorable `overrideWith`, legacy `setProxy/clearProxy`, cycle rejection, effective key/tag/lifetime       | `spec-overrides.test.ts`                                                         |
+| Asynchronous scoped overrides                           | Explicit isolated Runtime passed to callback; see boundary below                                           | `spec-overrides.test.ts`                                                         |
+| Getter DI, `read`/`watch`, read-to-watch upgrade        | Stable generation-owned Binding; no build-pass pruning                                                     | `dependencies.test.ts`, `flutter-parity.test.ts`                                 |
+| Every dependency notification; root refresh coalescing  | Parent notifications and business reactions are not deduplicated; one root refresh request per transaction | `notifications.test.ts`, `flutter-parity.test.ts`                                |
+| Ordered state changes and listener removal              | FIFO state events under synchronous reentry, no stale diffs from broad notify                              | `flutter-parity.test.ts`, `flutter-api.test.ts`                                  |
+| `listenState(previous, current)` and selected reactions | Positional typed values, no artificial null, Binding-owned cleanup                                         | `flutter-api.test.ts`                                                            |
+| `update`, listeners, state history, equality            | Successful sync/async update auto-notifies; local/global/`Object.is` equality                              | `flutter-api.test.ts`, `electron/equality.test.tsx`, `vue.test.ts`               |
+| Direct + parent-path owner counting                     | Exact registration identities; commit ledgers before callbacks; obsolete release cancellation              | `ownership-commit.test.ts`                                                       |
+| Latest-created cached lookup and tag batches            | Key first, missing-key tag fallback, newest-first batches, preflight and rollback                          | `cached-dependencies.test.ts`, `diagnostics.test.ts`, `ownership-commit.test.ts` |
+| Forced recycle, unbind, reset, retained instances       | Cache removed before reentry; only exact old entries removed; complete exclusive graph cleanup             | `ownership-commit.test.ts`, `flutter-api.test.ts`                                |
+| Configuration, lifecycle observers, error reporting     | `ViewModel.initialize/config/reset`, observers, `ErrorType`, safe error sink                               | `flutter-api.test.ts`                                                            |
+| Debug graph and counts                                  | `runtime.getDiagnostics/countInstances`, factory/tag ambiguity warnings                                    | `diagnostics.test.ts`, `flutter-api.test.ts`                                     |
+| Pause and resume                                        | Runtime app/window tokens plus independent Binding visual-pause tokens                                     | `flutter-api.test.ts`, platform lifecycle suites                                 |
 
-| Flutter `view_model`          | TypeScript `view_model`                  | Important difference                                                                                 |
-| ----------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `class X with ViewModel`      | `class X extends ViewModel`              | TypeScript uses inheritance, not a Dart mixin.                                                       |
-| `StateViewModel<T>`           | `StateViewModel<TState>`                 | Equality defaults to `Object.is`; there is no global equality configuration.                         |
-| `ViewModelSpec<T>`            | `ViewModelSpec<T>` / `viewModelSpec()`   | Pass the ViewModel class explicitly because TypeScript generics do not exist at runtime.             |
-| `ViewModelBinding` host mixin | `runtime.createBinding()`                | Plain hosts explicitly own and dispose a Binding.                                                    |
-| Widget mixins                 | Platform `ViewModelScope` + hooks        | Scope maps React commit/unmount to one Binding owner.                                                |
-| `watch(spec)`                 | `binding.watch` / `useViewModel`         | Both own; watch also propagates ordinary notifications.                                              |
-| `read(spec)`                  | `binding.read` / `useReadViewModel`      | Read still owns and still reacts to generation replacement where adapters require it.                |
-| Selector widgets              | `useViewModelSelector`                   | Selector receives the ViewModel; equality defaults to `Object.is`.                                   |
-| `listen` / state listeners    | Binding `listen*` methods                | Binding/handle cleanup is automatic; each method also returns a manual disposer.                     |
-| Cached/tag lookup             | Binding cached methods                   | Targets are an explicit class or Spec; lookup never creates a missing generation.                    |
-| Keyed sharing                 | Explicit type + key                      | Separate Specs with the same explicit class and key share only inside one Runtime.                   |
-| Child getter DI               | `this.viewModelBinding.read/watch(spec)` | Getter access is forbidden in builders, constructors, React render, and selectors.                   |
-| Parent source propagation     | Generation-owned dependency Binding      | Current external root Binding sources are mirrored to children and counted per ownership path.       |
-| Synchronous notification      | Update propagation transaction           | Binding delivery is deduplicated by owner/callback identity across one complete synchronous cascade. |
-| `recycle(vm)`                 | `runtime.recycle(vmOrSpec)`              | An unkeyed Spec target can recycle several Binding-private generations.                              |
-| Pause/resume providers        | Runtime pause tokens                     | Pause is Runtime-wide, not route/ticker or Scope-local.                                              |
+Test paths are under `tests/core/` unless otherwise qualified. All tests run serially.
+ESM/CJS configuration, overrides, reset and class identity are also checked against built packages by
+`scripts/test-package-exports.mjs`.
 
-## Prefer explicit type + key
+## Breaking changes from 0.3.1
 
-TypeScript generic types are erased, so the package cannot recover `T` from
-`ViewModelSpec<T>`. Pass the ViewModel class as an explicit runtime identity:
-
-```ts
-const first = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
-  key: 'session',
-});
-const second = viewModelSpec(SessionViewModel, () => new SessionViewModel(), {
-  key: 'session',
-});
-
-binding.read(first) === binding.read(second);
-```
-
-Explicit type without a key remains private to one Binding. Explicit type with a
-key is shared by Bindings in the same Runtime. `withKey` preserves the explicit
-type identity:
-
-```ts
-const userSpec = viewModelSpec(UserViewModel, () => new UserViewModel());
-const adaSpec = userSpec.withKey('ada');
-const graceSpec = userSpec.withKey('grace');
-```
-
-The builder-only overload remains a compatibility fallback:
-
-```ts
-const legacySpec = viewModelSpec(() => new SessionViewModel());
-```
-
-Each independently created builder-only base Spec receives a unique token, so
-separate builder-only Specs do not share even when their keys match. Keep such a
-Spec stable at module scope, and prefer explicit type + key for shared identity.
-
-## Synchronous propagation keeps Flutter's transaction semantics
-
-`notifyListeners` opens the propagation transaction outside the whole
-synchronous notification cascade. Direct listeners, dependency bubbling, and
-nested synchronous notifications therefore participate in the same transaction.
-
-Binding delivery is deduplicated by the pair of Binding owner identity and
-callback identity. Reaching the same callback several times through one Binding
-runs it once, while two distinct Bindings that reuse the same callback each run
-it once. A parent generation also bubbles at most once in that transaction.
-A later microtask or Promise continuation starts a new transaction.
-
-Each parent generation owns one stable dependency Binding. When it resolves a
-child, the parent's current external root Binding sources are mirrored to that
-child, and later root additions/removals are synchronized. A direct ownership
-source and every parent path are counted independently: the first source for a
-Binding id triggers `onBind(id)`, and `onUnbind(id)` waits until its last source
-is removed. `read` establishes this lifetime edge without ordinary notification
-bubbling; `watch` also bubbles child notifications.
-
-## Cached lookup and listeners preserve ownership
-
-Normal dependency injection should retain a Spec and call `read(spec)` or
-`watch(spec)`. The cached methods are advanced lookup-only APIs for a generation
-already created elsewhere. Their target may be an explicit ViewModel class or a
-Spec:
-
-- `readCached` / `watchCached` return one lookup match and throw on a miss;
-- `maybeReadCached` / `maybeWatchCached` return `undefined` on a miss;
-- `readCachesByTag` / `watchCachesByTag` return all matches, or an empty array.
-
-`tag` is only a grouping label and does not participate in identity. No cached
-method runs a builder. A hit still binds the generation and creates the same
-parent lifetime edge as Spec-based resolution. Only the `watch` variants bubble
-ordinary child notifications.
-
-`binding.listen`, `listenState`, and `listenStateSelect` resolve through a Spec
-and install side-effect listeners without broad watch propagation. They are
-automatically removed when the Binding or generation handle is disposed or
-recycled, and each returned disposer can remove its listener earlier. The
-lower-level `viewModel.subscribe` / `subscribeState` APIs remain manually owned.
-
-## `update` does not notify
-
-Flutter's convenience update API may automatically publish a change. The
-TypeScript method has a narrower purpose: it attaches an action value to
-notifications emitted synchronously inside the mutation.
+`update` now notifies after successful completion, including after an awaited Promise.
+Remove a trailing manual `notifyListeners()` inside `update` unless the extra event is deliberate.
+For immutable state, use `setState/updateState` directly rather than wrapping them in `update`.
 
 ```ts
 this.update('cart.add', () => {
   this.items.push(item);
-  this.notifyListeners();
+});
+await this.update('cart.reload', async () => {
+  this.items = await loadItems();
 });
 ```
 
-Omitting `notifyListeners()` changes the field silently. `StateViewModel`
-actions normally use `setState` or `updateState`, which do notify when equality
-reports a new snapshot.
+`onDependencyNotify` has been removed. A watched child automatically notifies the parent.
+For business logic, install `this.viewModelBinding.listen(childSpec, callback)` in `onCreate`.
+Do not replace the removed hook with a manual forwarding loop.
 
-## Scope exists because React has render and commit phases
+```ts
+binding.listenState(counterSpec, (previous, current) => {
+  recordChange(previous, current);
+});
+binding.listenStateSelect(
+  counterSpec,
+  (state) => state.count,
+  (previous, current) => {
+    recordCount(previous, current);
+  },
+);
+```
 
-Flutter widget mixins and this package's React Scope/hooks solve similar owner
-problems through different host lifecycles. React render can be replayed or
-abandoned, so builders may prepare pure objects during render while ownership,
-`onCreate`, and `onBind` start only after commit.
+The old `listenState`/`listenStateSelect` object argument is now positional.
+Direct `subscribeState(({ previous, current }) => ...)` deliberately retains its object payload.
+A diamond can emit two parent events; only root visual refresh is coalesced.
+Listener/lifecycle/cleanup errors go to `config.onError`, not a synchronous `AggregateError`.
+Creation/binding hook errors are reported without automatically destroying an otherwise valid owner.
+Constructor, cycle, type and invalid-owner errors still reject the operation.
+After disposal, `notifyListeners` and state writes are ignored; `updateState` does not run its updater.
+Dependency resolution, new subscriptions and `update` still reject an ended generation.
 
-Scope is not required for application DI. Electron main, startup code,
-background services, and tests use a plain Binding from the same core Runtime.
+## Parameterized Specs and effective identity
 
-## APIs intentionally not carried over
+```ts
+const userSpec = ViewModelSpec.arg(UserViewModel, (id: string) => new UserViewModel(id), {
+  key: (id) => id,
+  tag: () => 'users',
+});
+const user = binding.watch(userSpec('ada'));
+```
 
-This TypeScript package currently has no:
+Without a key, different arguments for the same explicit class in one Binding reuse the first instance.
+Within one Runtime, equal explicit class + key share even across different Specs. A later builder does
+not replace an existing generation. Keys use JavaScript Map identity: objects are compared by reference,
+not Dart-style overloaded equality. `undefined` means unkeyed; `null` is rejected.
+`tag` only groups instances and never defines identity. `aliveForever` requires an explicit key.
 
-- `ViewModelSpec.arg/arg2/arg3/arg4`;
-- proxy/override or code-generation annotations;
-- `ChangeNotifierViewModel`;
-- global `initialize`, `reset`, equality, logging, or error configuration;
-- DevTools protocol;
-- Flutter route/ticker lifecycle providers;
-- Widget mixins.
+## Override scopes: explicit, not an ambient Dart Zone
 
-Do not emulate these with undocumented imports. Build from the currently
-exported core and platform APIs, or propose an explicit library change.
+```ts
+await userSpec.runWithOverride(fakeUserSpec, async (runtime) => {
+  const binding = runtime.createBinding();
+  await prepareFixture();
+  const user = binding.read(userSpec('ada'));
+  // Nested getters use the same Runtime and override context.
+  await verifyUser(user);
+});
+```
 
-## Platform boundary
+`ViewModelRuntime.runWithOverrides([[source, replacement]], callback)` handles several overrides.
+The instance method `runtime.runWithOverrides` inherits that Runtime's selected factories.
+Each helper supplies a **new isolated cache and Runtime**, snapshots the override context, and disposes
+it after the callback succeeds or fails. Use the supplied Runtime throughout the asynchronous task;
+using an unrelated existing Binding does not acquire the scope. This is not a transparent Dart Zone port.
+Concurrent tasks cannot replace each other's factory selections.
 
-The TypeScript package serves React Native and Electron only. Electron main,
-preload, and renderer remain separate realms; transfer serializable DTOs and
-events over IPC. The internal shared React layer is not a public Web entry and
-does not imply ordinary React Web, SSR, or RSC support.
+`spec.overrideWith(replacement)` is a manual realm-wide override and returns an idempotent restore
+function. Always restore it in `finally`; do not overlap it across independent async tasks. Overrides
+change future resolution, not existing generations. `withKey` creates a separate concrete declaration;
+install an override on that declaration (or use an argument family) when it needs to be overridden.
+
+## Host-specific boundaries
+
+Core dependency lifetime follows Binding ownership, **not build/render collection**. React render can
+prepare only pure objects; owner acquisition, `onCreate` and `onBind` happen at commit. Dependency
+getters are for committed actions/lifecycle, not render or selectors. Natural last-owner disposal uses a
+microtask to tolerate immediate React remount; forced recycle/reset/Runtime disposal are synchronous.
+
+`binding.pause/resume` only defer that Binding's visual refresh; other owners, state and business
+reactions continue. `runtime.pause/resume` additionally deliver VM `onPause/onResume` and aggregate
+app/window tokens. Neither is a Flutter route/ticker provider.
+
+Flutter Widget mixins, `ChangeNotifier`, Dart streams, annotation/code generation and the Flutter
+DevTools UI/protocol are not exported by this package. Diagnostics are plain snapshots, not a DevTools
+extension. JavaScript equivalents are the existing React Native/Electron Scope hooks, Vue reactive
+bridge and Taro page lifecycle bridge. No React Web, SSR or RSC support is introduced. Electron
+main/preload/renderer remain separate realms; share serializable DTOs over IPC, not VM objects.

@@ -1,127 +1,79 @@
+import { ErrorType, reportViewModelError } from './config.js';
 import type { ViewModelListener } from './types.js';
 
-const UPDATE_TRANSACTION_SLOT = Symbol.for('view_model.UpdateTransaction.v1');
-
-interface QueuedCallback {
-  readonly owner: object;
-  readonly callback: ViewModelListener;
-}
-
+// The v2 protocol coalesces refresh requests, never dependency or business events.
+const UPDATE_TRANSACTION_SLOT = Symbol.for('view_model.UpdateTransaction.v2');
 interface ViewModelUpdateTransaction {
+  readonly updatedBindings: Set<object>;
   readonly callbackPairs: Map<object, Set<ViewModelListener>>;
-  readonly callbacks: QueuedCallback[];
-  readonly notifiedParents: Set<object>;
+  readonly callbacks: ViewModelListener[];
 }
-
-interface ViewModelUpdateTransactionSlot {
+interface TransactionSlot {
   active: ViewModelUpdateTransaction | undefined;
 }
-
-const localTransactionSlot: ViewModelUpdateTransactionSlot = { active: undefined };
-
-function transactionSlot(): ViewModelUpdateTransactionSlot {
-  const sharedGlobal = globalThis as Record<PropertyKey, unknown>;
-  const existing = sharedGlobal[UPDATE_TRANSACTION_SLOT];
-  if (existing !== undefined) {
-    return existing as ViewModelUpdateTransactionSlot;
-  }
-
-  const created: ViewModelUpdateTransactionSlot = { active: undefined };
+const local: TransactionSlot = { active: undefined };
+function transactionSlot(): TransactionSlot {
+  const global = globalThis as Record<PropertyKey, unknown>;
+  const existing = global[UPDATE_TRANSACTION_SLOT];
+  if (existing !== undefined) return existing as TransactionSlot;
   try {
-    Object.defineProperty(sharedGlobal, UPDATE_TRANSACTION_SLOT, {
-      configurable: false,
-      enumerable: false,
-      value: created,
-      writable: false,
-    });
-    return created;
+    Object.defineProperty(global, UPDATE_TRANSACTION_SLOT, { value: local });
   } catch {
-    // A frozen global object cannot share the slot across module copies.
-    return localTransactionSlot;
+    /* Frozen globals use the module-local slot. */
   }
+  return local;
 }
 
-/**
- * Runs one complete synchronous notification cascade in a shared transaction.
- * Nested calls reuse the current transaction; a later microtask starts a new one.
- */
+/** One synchronous cascade; asynchronous continuations always start a new transaction. */
 export function runInViewModelUpdateTransaction<TResult>(body: () => TResult): TResult {
   const slot = transactionSlot();
-  if (slot.active !== undefined) {
-    return body();
-  }
-
+  if (slot.active !== undefined) return body();
   const transaction: ViewModelUpdateTransaction = {
+    updatedBindings: new Set(),
     callbackPairs: new Map(),
     callbacks: [],
-    notifiedParents: new Set(),
   };
   slot.active = transaction;
-
-  let result: TResult | undefined;
-  let bodyError: unknown;
-  let bodyFailed = false;
-  const callbackErrors: unknown[] = [];
-
   try {
-    try {
-      result = body();
-    } catch (error) {
-      bodyFailed = true;
-      bodyError = error;
-    }
-
-    // Callbacks may synchronously enqueue more callbacks. Keep the transaction
-    // active and drain by index so the new work joins the same cascade.
-    for (let index = 0; index < transaction.callbacks.length; index += 1) {
-      const queued = transaction.callbacks[index];
-      if (queued === undefined) continue;
-      try {
-        queued.callback();
-      } catch (error) {
-        callbackErrors.push(error);
-      }
-    }
+    return body();
   } finally {
-    slot.active = undefined;
+    try {
+      // Host subscriptions read the final snapshot, after every synchronous
+      // dependency and business event. This is not a dependency-tracking phase.
+      for (let index = 0; index < transaction.callbacks.length; index += 1) {
+        try {
+          transaction.callbacks[index]?.();
+        } catch (error) {
+          reportViewModelError(error, ErrorType.listener, 'host update');
+        }
+      }
+    } finally {
+      slot.active = undefined;
+    }
   }
-
-  if (bodyFailed && callbackErrors.length === 0) {
-    throw bodyError;
-  }
-  if (bodyFailed || callbackErrors.length > 0) {
-    const errors = bodyFailed ? [bodyError, ...callbackErrors] : callbackErrors;
-    throw new AggregateError(errors, 'ViewModel 更新事务回调发生错误。');
-  }
-
-  return result as TResult;
 }
 
-/**
- * Queues one callback per owner/callback identity pair in the current
- * transaction. The same callback used by two bindings therefore runs twice.
- */
+/** A root onUpdate is a refresh request at the first event, not a business listener. */
+export function markViewModelBindingUpdated(binding: object): boolean {
+  const transaction = transactionSlot().active;
+  if (transaction === undefined) return true;
+  if (transaction.updatedBindings.has(binding)) return false;
+  transaction.updatedBindings.add(binding);
+  return true;
+}
+
+/** Deduplicate host subscriptions by owner AND callback; do not use for business listeners. */
 export function enqueueViewModelUpdateCallback(owner: object, callback: ViewModelListener): void {
   const transaction = transactionSlot().active;
   if (transaction === undefined) {
     callback();
     return;
   }
-
   const callbacks = transaction.callbackPairs.get(owner) ?? new Set<ViewModelListener>();
   if (callbacks.has(callback)) return;
   callbacks.add(callback);
   transaction.callbackPairs.set(owner, callbacks);
-  transaction.callbacks.push({ owner, callback });
-}
-
-/** Returns true only for the first propagation to this parent in a transaction. */
-export function markViewModelParentNotified(parent: object): boolean {
-  const transaction = transactionSlot().active;
-  if (transaction === undefined) return true;
-  if (transaction.notifiedParents.has(parent)) return false;
-  transaction.notifiedParents.add(parent);
-  return true;
+  transaction.callbacks.push(callback);
 }
 
 /** @internal */

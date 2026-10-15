@@ -27,7 +27,7 @@ Test these semantics when relevant:
   run only on logical first/last source transitions;
 - cycle rejection and construction rollback;
 - whole-cascade synchronous transaction deduplication per Binding/callback pair,
-  diamond parent deduplication, and a fresh transaction after an async boundary;
+  every diamond parent-path event, and a fresh transaction after an async boundary;
 - cached/tag required, optional, and batch lookup behavior without accidental
   construction, plus read/watch ownership and notification differences;
 - Binding-owned `listen`, `listenState`, and `listenStateSelect` early disposal,

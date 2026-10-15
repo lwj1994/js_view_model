@@ -148,7 +148,7 @@ Run only on a Runtime transition between active and paused. Multiple pause token
 
 Runs once when the current generation permanently ends. The ViewModel is already marked disposed, so it must not resolve new dependencies or emit new state.
 
-After `onDispose`, cleanup functions registered with `addDispose` run in reverse registration order. The Runtime attempts all cleanup paths and aggregates multiple failures in `AggregateError` instead of abandoning the remaining cleanup.
+After onDispose, addDispose callbacks run in reverse registration order. Errors are reported through config.onError without abandoning remaining cleanup.
 
 ## Natural zero-owner disposal
 
@@ -162,11 +162,7 @@ An `aliveForever` generation skips natural zero-owner disposal. It still ends on
 
 ## Notifications and generation snapshots
 
-`notifyListeners(action?)` increments a ViewModel version and synchronously enters the Runtime propagation transaction. Within one transaction, the Runtime deduplicates:
-
-- repeated notification delivery for the same handle;
-- parent dependency bubbling;
-- the same queued owner callback.
+notifyListeners increments the version and opens a synchronous transaction. Every business and parent dependency event is preserved; only root Binding refresh requests are coalesced, with host subscriptions sampling the final snapshot at transaction end. Async events start a new transaction.
 
 `watch` snapshots include the ViewModel version. `read` snapshots include only generation/lifecycle identity. Therefore:
 
@@ -179,7 +175,7 @@ An `aliveForever` generation skips natural zero-owner disposal. It still ends on
 
 ## Runtime-level pause tokens
 
-Pause is a property of `ViewModelRuntime`, not of a Scope or individual ViewModel owner.
+Runtime pause aggregates app/window reasons and invokes VM hooks. For independent owner visual pause use binding.pause/resume; this does not pause shared ViewModels or business listeners.
 
 ```ts
 const applicationBackground = Symbol('application-background');

@@ -1,12 +1,19 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ViewModel, ViewModelRuntime, viewModelSpec } from '../../src/core/index.js';
 import {
   enqueueViewModelUpdateCallback,
   isViewModelUpdateTransactionActive,
-  markViewModelParentNotified,
+  markViewModelBindingUpdated,
   runInViewModelUpdateTransaction,
 } from '../../src/core/update-transaction.js';
+
+const reported = vi.fn();
+beforeEach(() => {
+  ViewModel.reset();
+  ViewModel.initialize({ config: { onError: reported } });
+});
+afterEach(() => ViewModel.reset());
 
 class CounterViewModel extends ViewModel {
   public count = 0;
@@ -97,7 +104,8 @@ describe('watch/read 与 generation 快照', () => {
     });
     viewModel.subscribe(directListener);
 
-    expect(() => viewModel.increment()).toThrow(AggregateError);
+    expect(() => viewModel.increment()).not.toThrow();
+    expect(reported).toHaveBeenCalledOnce();
     expect(directListener).toHaveBeenCalledOnce();
     expect(bindingListener).toHaveBeenCalledOnce();
 
@@ -137,12 +145,12 @@ describe('同步通知 transaction', () => {
 
     first.subscribe(() => {
       expect(isViewModelUpdateTransactionActive()).toBe(true);
-      if (markViewModelParentNotified(parent)) parentNotifications += 1;
+      if (markViewModelBindingUpdated(parent)) parentNotifications += 1;
       second.emit();
     });
     second.subscribe(() => {
       expect(isViewModelUpdateTransactionActive()).toBe(true);
-      if (markViewModelParentNotified(parent)) parentNotifications += 1;
+      if (markViewModelBindingUpdated(parent)) parentNotifications += 1;
     });
 
     first.emit();
@@ -175,10 +183,10 @@ describe('同步通知 transaction', () => {
     const notifications: boolean[] = [];
 
     runInViewModelUpdateTransaction(() => {
-      notifications.push(markViewModelParentNotified(parent));
+      notifications.push(markViewModelBindingUpdated(parent));
       queueMicrotask(() => {
         runInViewModelUpdateTransaction(() => {
-          notifications.push(markViewModelParentNotified(parent));
+          notifications.push(markViewModelBindingUpdated(parent));
         });
       });
     });
@@ -187,7 +195,7 @@ describe('同步通知 transaction', () => {
     expect(notifications).toEqual([true, true]);
   });
 
-  it('一个 transaction callback 抛错不会阻断其他 callback，并聚合错误', () => {
+  it('一个 transaction callback 抛错不会阻断其他 callback，并逐个上报', () => {
     const first = vi.fn(() => {
       throw new Error('first failed');
     });
@@ -207,7 +215,7 @@ describe('同步通知 transaction', () => {
 
     expect(first).toHaveBeenCalledOnce();
     expect(second).toHaveBeenCalledOnce();
-    expect(thrown).toBeInstanceOf(AggregateError);
-    expect((thrown as AggregateError).errors).toHaveLength(2);
+    expect(thrown).toBeUndefined();
+    expect(reported).toHaveBeenCalledTimes(2);
   });
 });

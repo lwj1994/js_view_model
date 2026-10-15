@@ -25,7 +25,6 @@ class ConnectionViewModel extends ViewModel {
 
     this.update('connection.connect', () => {
       this.#status = 'connecting';
-      this.notifyListeners();
     });
   }
 }
@@ -40,7 +39,7 @@ The public instance exposes:
 - `isPaused`: whether its Runtime has entered the paused state;
 - `subscribe(listener)`: a direct instance subscription that returns an unsubscribe function.
 
-Subclasses use protected methods and callbacks:
+Notification, update and cleanup methods are public; lifecycle hooks and `assertAlive` are protected:
 
 - `notifyListeners(action?)`;
 - `update(action, mutation)`;
@@ -48,38 +47,18 @@ Subclasses use protected methods and callbacks:
 - `assertAlive()`;
 - the lifecycle callbacks described below.
 
-### `update` does not notify
+### `update` notifies on successful completion
 
-`update(action, mutation)` only establishes action context for synchronous notifications emitted inside `mutation`. It does not detect field changes and does not call `notifyListeners` automatically.
-
-This is correct:
-
-```ts
-public rename(name: string): void {
-  this.update('profile.rename', () => {
-    this.#name = name;
-    this.notifyListeners();
-  });
-}
-```
-
-This changes the field silently and is usually a bug:
-
-```ts
-public renameSilently(name: string): void {
-  this.update('profile.rename', () => {
-    this.#name = name;
-  });
-}
-```
-
-Nested `update` calls restore the outer action context after the inner mutation returns. Action context is synchronous; do not wrap a long asynchronous operation in `update`. Perform the asynchronous work first, then use `update` or a state method around each synchronous commit.
+Synchronous success notifies before return; async success after completion. Failure emits no final
+notification and does not roll back earlier writes. Use
+`this.update('rename', () => { this.name = name; });` without a redundant notify.
+Use `setState/updateState` directly for immutable state rather than wrapping them in update.
 
 ### Notification failures
 
-The ViewModel increments its version before delivering a notification. It attempts to notify all direct listeners and the Runtime even when one listener throws, then reports collected failures as an `AggregateError`.
-
-Do not treat a thrown listener error as proof that the state commit was rolled back. Notification delivery is not a state transaction rollback mechanism.
+Configure `ViewModel.initialize({ config: { onError } })` to report errors without interrupting
+remaining listeners or cleanup. Reentrant state events are delivered in order. Business listeners
+see every event; only root Binding visual refresh is coalesced.
 
 ## `StateViewModel<State>`
 
@@ -110,12 +89,12 @@ class ProfileViewModel extends StateViewModel<ProfileState> {
 export const profileSpec = viewModelSpec(() => new ProfileViewModel());
 ```
 
-The protected update methods return whether the state changed:
+The protected state methods return whether the state changed:
 
 - `setState(nextState, action?)` compares and replaces the snapshot;
 - `updateState(updater, action?)` computes the next snapshot and delegates to `setState`.
 
-The default equality is `Object.is`. Mutating an object in place and passing the same reference will not notify:
+Equality uses the explicit comparator, then global configuration, then `Object.is`. Mutating an object in place and passing the same reference will not notify:
 
 ```ts
 // Do not do this.
@@ -204,7 +183,7 @@ class FeedViewModel extends StateViewModel<readonly string[]> {
 
 `addDispose` stores a cleanup for the end of the current generation. Registered cleanups run in reverse registration order, after `onDispose`. The function returned by `addDispose` unregisters that cleanup; it does not execute the cleanup.
 
-Register cleanup as soon as each resource is acquired so a later `onCreate` or `onBind` failure can still be rolled back safely.
+Register cleanup as soon as a resource is acquired. Hook failures are reported without automatic rollback; cleanup runs when the generation ends.
 
 ## Lifecycle callbacks
 
@@ -234,11 +213,10 @@ Pause is not disposal. The instance and dependency graph remain alive.
 
 Pause also does not prevent methods, `setState`, `notifyListeners`, direct `subscribe`, or `subscribeState` from running. It lets the module suspend its own resources and makes the Runtime defer/coalesce Binding and React update callbacks until resume.
 
-### `onDependencyNotify(child)`
+### Dependency changes
 
-Called when a dependency resolved with `viewModelBinding.watch` notifies, or when a resolved dependency generation is force-disposed. The Runtime automatically notifies the parent after this callback. Do not call `notifyListeners` merely to repeat that propagation.
-
-If the callback commits parent state through `setState`, that state commit already sends its own notification in addition to the Runtime's dependency notification. Keep this behavior in mind when interpreting versions and diagnostics.
+Watch automatically notifies the parent; no extra hook is needed. For business reactions install
+`this.viewModelBinding.listen(childSpec, callback)` in `onCreate`; Binding cleanup is automatic.
 
 ### `onDispose()`
 
@@ -254,7 +232,7 @@ The callback signatures return `void`, and the Runtime does not await promises r
 
 ## Disposed generations
 
-Recycle or final release permanently ends one generation. Mutating protected APIs call `assertAlive` and throw `ViewModelDisposedError` after disposal.
+Recycle or final release ends a generation. Late state writes and notify are ignored; updateState does not run its updater. New subscriptions, update and dependency resolution still reject disposed generations.
 
 Do not retain a ViewModel reference in a long-lived service and assume it will remain current. Retain a stable Spec and resolve it from the current Binding when needed, especially across explicit recycle.
 

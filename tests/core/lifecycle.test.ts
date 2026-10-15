@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ViewModel,
@@ -7,6 +7,13 @@ import {
   ViewModelRuntimeDisposedError,
   viewModelSpec,
 } from '../../src/core/index.js';
+
+const reported = vi.fn();
+beforeEach(() => {
+  ViewModel.reset();
+  ViewModel.initialize({ config: { onError: reported } });
+});
+afterEach(() => ViewModel.reset());
 
 const flushDisposals = async (): Promise<void> => {
   await Promise.resolve();
@@ -125,7 +132,7 @@ describe('平台与资源生命周期', () => {
     runtime.dispose();
   });
 
-  it('onCreate 失败会回滚并销毁失败 generation，下一次可重新构造', () => {
+  it('onCreate 异常上报但保留已提交实例，直到 owner 释放', () => {
     const instances: FailingCreateViewModel[] = [];
     class FailingCreateViewModel extends ViewModel {
       public disposedCount = 0;
@@ -144,16 +151,16 @@ describe('平台与资源生命周期', () => {
       return instance;
     });
 
-    expect(() => binding.read(spec)).toThrow('create failed');
+    expect(binding.read(spec)).toBe(instances[0]);
     expect(instances).toHaveLength(1);
-    expect(instances[0]?.isDisposed).toBe(true);
-    expect(instances[0]?.disposedCount).toBe(1);
-    expect(() => binding.read(spec)).toThrow('create failed');
-    expect(instances).toHaveLength(2);
+    expect(instances[0]?.isDisposed).toBe(false);
+    expect(reported).toHaveBeenCalledOnce();
+    expect(binding.read(spec)).toBe(instances[0]);
     runtime.dispose();
+    expect(instances[0]?.disposedCount).toBe(1);
   });
 
-  it('onBind 失败同样回滚 generation', () => {
+  it('onBind 失败上报但保留已提交的 ownership', () => {
     const instances: FailingBindViewModel[] = [];
     class FailingBindViewModel extends ViewModel {
       public disposedCount = 0;
@@ -172,10 +179,11 @@ describe('平台与资源生命周期', () => {
       return instance;
     });
 
-    expect(() => binding.watch(spec)).toThrow('bind failed');
-    expect(instances[0]?.isDisposed).toBe(true);
-    expect(instances[0]?.disposedCount).toBe(1);
+    expect(binding.watch(spec)).toBe(instances[0]);
+    expect(instances[0]?.isDisposed).toBe(false);
+    expect(reported).toHaveBeenCalledOnce();
     runtime.dispose();
+    expect(instances[0]?.disposedCount).toBe(1);
   });
 
   it('binding/runtime dispose 幂等，销毁后拒绝继续解析', async () => {

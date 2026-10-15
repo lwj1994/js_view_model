@@ -67,15 +67,12 @@ class ConnectionViewModel extends ViewModel {
   public connect(): void {
     this.update('connection.connect', () => {
       this.status = 'connected';
-      this.notifyListeners();
     });
   }
 }
 ```
 
-`update(action, mutation)` does not notify automatically. It only supplies the
-action used by nested `notifyListeners()` calls and restores the previous action
-after the synchronous mutation returns.
+`update(action, mutation)` notifies after successful synchronous or asynchronous completion. It returns the result and restores surrounding synchronous action context. Do not add a duplicate notify; failed blocks emit no final event.
 
 Use `StateViewModel<TState>` for immutable snapshots:
 
@@ -226,7 +223,7 @@ const stopSelection = binding.listenStateSelect(
 ```
 
 `listen` observes ordinary ViewModel notifications. `listenState` receives
-`{ previous, current }` state diffs. `listenStateSelect` emits selected diffs
+positional `(previous, current)` values. `listenStateSelect` emits selected values
 only when its equality function, `Object.is` by default, says the selection
 changed.
 
@@ -309,9 +306,7 @@ parent is still owned; the next getter access can then resolve a fresh
 generation.
 
 Use parent `read` for imperative collaboration. Use parent `watch` when child
-notifications should call `parent.onDependencyNotify(child)` and then notify
-the parent. Propagation is transaction-deduplicated across valid diamond graphs.
-Do not notify the parent again unconditionally inside `onDependencyNotify`.
+notifications should notify the parent automatically for every event. Only root visual refresh is coalesced in a diamond. Use an explicit Binding listen for business reactions, without a forwarding hook.
 
 The dependency graph must be acyclic. Do not resolve dependencies in a builder
 or constructor. Do not expand dependency getters from React render, JSX, or a
@@ -332,11 +327,9 @@ selector.
   including nested `notifyListeners` calls and parent propagation. The same
   callback is queued once per Binding/callback pair, but the same function used
   by two Bindings runs once for each Binding.
-- Parent propagation is deduplicated per parent generation in that transaction,
-  so valid diamond graphs notify each parent once.
+- Every parent-path event is preserved, so a diamond may notify the top parent twice while refreshing its root Binding once.
 - A microtask or later asynchronous notification starts a new transaction.
-- Listener errors are aggregated after other listeners have had a chance to
-  run.
+- Listener errors are reported through config.onError without interrupting remaining listeners.
 
 ## Lifecycle and resources
 
@@ -349,7 +342,6 @@ Use these synchronous hooks:
 - `onBind(bindingId)`: first owner source for a logical Binding id.
 - `onUnbind(bindingId)`: final owner source for that logical Binding id.
 - `onPause` / `onResume`: Runtime pause transitions.
-- `onDependencyNotify(child)`: watched child propagation.
 - `onDispose`: final cleanup logic for an activated generation.
 
 Register cleanup with `addDispose`; callbacks run in reverse registration order
@@ -393,8 +385,16 @@ every owner should observe global invalidation.
 Core exports typed errors for disposed ViewModels, Runtimes, Bindings, invalid
 Specs, dependency cycles, and unmanaged ViewModel access. Preserve these errors
 instead of swallowing lifecycle failures; several listener/cleanup failures can
-arrive as `AggregateError`.
+are reported through config.onError without interrupting cleanup.
 
 Do not use Flutter-only concepts: `argN` Specs, proxy or override APIs,
 annotations/generation, ChangeNotifier integration, global
 configuration/reset, DevTools, widget mixins, or route/ticker pause providers.
+
+## Alignment additions
+
+See [API](../../../docs/api.md) for global configuration, positional listenState/listenStateSelect,
+arg1-4 families, override scopes, unbind, local visual pause, reset, diagnostics and non-owning Runtime
+cache queries. ViewModelConfig equality falls back to Object.is, never deep equality implicitly.
+Async helpers require the supplied Runtime and use an isolated cache; manual overrides are realm-wide
+and must be restored in finally. These additions are unreleased, not available in npm 0.3.1.

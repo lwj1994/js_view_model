@@ -1,6 +1,6 @@
 import type { ViewModel } from './view-model.js';
 
-export type ViewModelKey = string | number | symbol;
+export type ViewModelKey = string | number | symbol | boolean | bigint | object;
 export type ViewModelMode = 'watch' | 'read';
 export type ViewModelListener = () => void;
 export type ViewModelDispose = () => void;
@@ -19,14 +19,16 @@ export interface ViewModelType<T extends ViewModel> extends Function {
 }
 
 export interface ViewModelSpecOptions {
-  readonly key?: ViewModelKey;
+  readonly key?: ViewModelKey | undefined;
   readonly tag?: unknown;
   readonly aliveForever?: boolean;
   readonly debugLabel?: string;
+  /** Diagnostic factory identity, never part of instance/cache identity. */
+  readonly debugSource?: unknown;
 }
 
 export interface ViewModelCacheLookup {
-  readonly key?: ViewModelKey;
+  readonly key?: ViewModelKey | undefined;
   readonly tag?: unknown;
 }
 
@@ -42,3 +44,6 @@ export interface StateChange<TState> {
 
 export type StateListener<TState> = (change: StateChange<TState>) => void;
 export type Equality<T> = (left: T, right: T) => boolean;
+
+/** Flutter-compatible state reaction; neither value is artificially nullable. */
+export type StateChangeListener<TState> = (previous: TState, current: TState) => void;

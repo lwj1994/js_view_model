@@ -25,7 +25,6 @@ class ConnectionViewModel extends ViewModel {
 
     this.update('connection.connect', () => {
       this.#status = 'connecting';
-      this.notifyListeners();
     });
   }
 }
@@ -40,7 +39,7 @@ export const connectionSpec = viewModelSpec(() => new ConnectionViewModel());
 - `isPaused`：所属 Runtime 是否已进入 paused 状态；
 - `subscribe(listener)`：直接订阅实例，并返回 unsubscribe function。
 
-子类使用以下 protected method 与 callback：
+通知、update 与资源登记方法是 public，生命周期 hook 和 `assertAlive` 是 protected：
 
 - `notifyListeners(action?)`；
 - `update(action, mutation)`；
@@ -48,38 +47,16 @@ export const connectionSpec = viewModelSpec(() => new ConnectionViewModel());
 - `assertAlive()`；
 - 下文介绍的生命周期 callback。
 
-### `update` 不会自动通知
+### `update` 成功后自动通知
 
-`update(action, mutation)` 只为 `mutation` 内同步发出的通知建立 action context。它不会检测字段变化，也不会自动调用 `notifyListeners`。
-
-这是正确写法：
-
-```ts
-public rename(name: string): void {
-  this.update('profile.rename', () => {
-    this.#name = name;
-    this.notifyListeners();
-  });
-}
-```
-
-下面的写法会静默修改字段，通常是 bug：
-
-```ts
-public renameSilently(name: string): void {
-  this.update('profile.rename', () => {
-    this.#name = name;
-  });
-}
-```
-
-嵌套 `update` 在内部 mutation 返回后，会恢复外层 action context。action context 是同步的；不要用 `update` 包住长时间异步操作。应先完成异步工作，再用 `update` 或 state method 包围每次同步 commit。
+同步操作返回前通知，异步操作成功完成后通知。失败不发最终通知，也不回滚先前写入。
+直接使用 `this.update('rename', () => { this.name = name; });`，不要再添加重复 notify。
+不可变状态直接使用 `setState/updateState`，不必额外包一层 update。
 
 ### 通知失败
 
-ViewModel 在投递通知前递增 version。即使一个 listener 抛错，它仍会尝试通知所有直接 listener 与 Runtime，最后把收集到的失败报告为 `AggregateError`。
-
-不要把 listener 抛错当成 state commit 已回滚的证据。通知投递不是 state transaction rollback 机制。
+错误交给 `ViewModel.initialize({ config: { onError } })`；不会中断剩余监听或清理。
+原地重入状态事件按顺序排队，业务监听逐条投递，仅合并根 Binding 界面刷新。
 
 ## `StateViewModel<State>`
 
@@ -115,7 +92,7 @@ protected update method 会返回 state 是否发生变化：
 - `setState(nextState, action?)` 比较并替换 snapshot；
 - `updateState(updater, action?)` 计算下一个 snapshot，然后委托给 `setState`。
 
-默认 equality 是 `Object.is`。原地修改对象并传入同一个引用不会发出通知：
+判等顺序是显式 comparator、全局配置、`Object.is`。原地修改对象并传入同一个引用不会发出通知：
 
 ```ts
 // Do not do this.
@@ -204,7 +181,7 @@ class FeedViewModel extends StateViewModel<readonly string[]> {
 
 `addDispose` 保存一项 cleanup，在当前 generation 结束时执行。已登记 cleanup 会在 `onDispose` 之后按登记顺序逆序执行。`addDispose` 返回的 function 用于取消登记，不会直接执行 cleanup。
 
-每获取一项资源就应立即登记 cleanup，这样后续 `onCreate` 或 `onBind` 失败时仍能安全 rollback。
+每获取资源就立即登记清理。Hook 失败会报告，但不自动回滚有效 owner；generation 结束时执行清理。
 
 ## 生命周期 callback
 
@@ -234,11 +211,10 @@ Pause 不是 disposal。实例与依赖图仍然存活。
 
 Pause 也不会阻止 method、`setState`、`notifyListeners`、直接 `subscribe` 或 `subscribeState` 运行。它让模块有机会暂停自己的资源，并让 Runtime 延迟、合并 Binding 与 React update callback，直到 resume。
 
-### `onDependencyNotify(child)`
+### 依赖变化
 
-通过 `viewModelBinding.watch` 解析的依赖发出通知，或已解析的依赖 generation 被强制 dispose 时调用。该 callback 返回后，Runtime 会自动通知 parent。不要只是为了重复转发而调用 `notifyListeners`。
-
-如果 callback 通过 `setState` commit parent state，该 state commit 除 Runtime 的依赖通知外，还会发出自己的通知。解释 version 与 diagnostics 时应考虑这一行为。
+watch 自动通知 parent，没有额外 hook。业务反应在 `onCreate` 中使用
+`this.viewModelBinding.listen(childSpec, callback)`，随 Binding 自动清理。
 
 ### `onDispose()`
 

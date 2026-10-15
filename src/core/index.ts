@@ -13,6 +13,7 @@ export { ViewModelSpec, viewModelSpec } from './spec.js';
 export type {
   Equality,
   StateChange,
+  StateChangeListener,
   StateListener,
   ViewModelBindingOptions,
   ViewModelBuilder,
@@ -26,3 +27,15 @@ export type {
   ViewModelType,
 } from './types.js';
 export { StateViewModel, ViewModel } from './view-model.js';
+export { ErrorType } from './config.js';
+export type {
+  ViewModelConfig,
+  ViewModelInitializeOptions,
+  ViewModelInstanceInfo,
+  ViewModelLifecycle,
+} from './config.js';
+export type { ViewModelRuntimeSnapshot } from './runtime.js';
+
+export type { ViewModelArgsOptions, ViewModelSpecFamily } from './spec.js';
+export type { ViewModelRuntimeOptions } from './runtime.js';
+export type { ViewModelOverride } from './overrides.js';

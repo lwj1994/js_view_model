@@ -121,8 +121,7 @@ export const checkoutSpec = viewModelSpec(CheckoutViewModel, () => new CheckoutV
 - Prefer getters over long-lived fields or manual caches so the next
   access can resolve a fresh generation after explicit `recycle`.
 - Use parent `read` for imperative collaboration. Use parent `watch` only when
-  child notifications should invoke `onDependencyNotify(child)` and notify the
-  parent.
+  each child event should notify the parent automatically; use listen for business reactions.
 - Keep normal modules unkeyed for private per-Binding graphs. When independent
   owners intentionally share one generation, let every owner resolve the same
   explicit type and key from the same Runtime.
@@ -234,13 +233,10 @@ Don't:
 
 ## Important semantic details
 
-- `update(action, mutation)` supplies debug action context but does not call
-  `notifyListeners`; ordinary `ViewModel` mutations notify explicitly.
-- `StateViewModel` uses `Object.is` by default. Replace immutable snapshots or
+- `update(action, mutation)` automatically notifies after sync/async success. Do not add a redundant notify.
+- State equality uses the explicit comparator, global configuration, then `Object.is`. Replace immutable snapshots or
   provide a deliberate equality function.
-- Parent `watch` already propagates a child notification after
-  `onDependencyNotify(child)`; do not notify the same event again
-  unconditionally.
+- Parent watch forwards every child event without onDependencyNotify. Only root visual refresh is coalesced; business events are not.
 - One React hook cleanup removes only its listener. The Scope Binding retains
   its owner entry until Scope disposal or recycle.
 - Binding-owned `listen*` subscriptions are removed by their disposer, Binding
@@ -248,26 +244,14 @@ Don't:
   manually owned.
 - `runtime.recycle(instance)` force-disposes one generation.
   `runtime.recycle(unkeyedSpec)` can match one private generation per Binding.
-- Pause/resume is Runtime-wide and token-aggregated.
+- Runtime pause/resume is token-aggregated and invokes VM hooks. Binding pause/resume independently delays only that owner's visual callbacks.
 
-## Avoid invented or Flutter-only APIs
+## Flutter alignment
 
-Do not generate `ViewModelSpec.argN`, spec proxy/override APIs, annotations or
-code generation, `ChangeNotifierViewModel`, global
-`ViewModel.initialize/reset/config`, Flutter route/ticker pause providers,
-DevTools integration, or widget mixins. They are not part of this TypeScript
-package.
-
-## Response pattern for implementation requests
-
-- Default examples to stable Specs with `watch` or `read`; show cached lookup
-  only for an explicit advanced cache-query requirement.
-- Present application architecture as collaborating, managed ViewModel modules
-  rather than a collection of UI stores or global singletons.
-- Prefer complete snippets with imports, ViewModel class, Spec declaration,
-  owner usage, and disposal/setup notes.
-- State why `watch` or `read` was chosen.
-- When introducing sharing, show the explicit key, Runtime boundary, and
-  lifecycle consequences.
-- Explain Runtime and owner boundaries when they are not obvious, and state the
-  blast radius before suggesting `aliveForever` or `recycle`.
+Read [core](./references/core.md) and the source-pinned [coverage/migration guide](../../docs/flutter-comparison.md).
+Supported additions include ViewModelSpec.arg/arg2/arg3/arg4, restorable overrides and explicit async
+Runtime scopes, ViewModel.initialize/config/reset, lifecycle observers and diagnostics. Direct
+subscribeState retains an object diff; listenState/listenStateSelect use (previous, current).
+Never invent implicit cross-platform Dart Zone propagation: use the supplied isolated Runtime.
+Do not add Flutter annotations/generators, ChangeNotifier, Dart streams, Widget mixins or DevTools UI.
+No React Web/SSR/RSC support is introduced.

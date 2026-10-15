@@ -1,5 +1,7 @@
 # view_model — State Management, Dependency Injection, and Module Architecture
 
+> Unreleased: shared core aligned to Flutter 1.2.1. Read the [migration and coverage guide](./docs/flutter-comparison.md) before upgrading, especially the breaking update, listenState and notification changes.
+
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -367,7 +369,7 @@ then expose serializable DTOs/events through a narrow preload IPC API.
 - Both `watch` and `read` create/resolve an instance and establish lifecycle
   ownership. Only `watch` propagates ordinary ViewModel notifications.
 - One complete synchronous notification cascade shares a transaction. The same
-  callback delivery is deduplicated per Binding, while separate Bindings still
+  visual refresh delivery is deduplicated per Binding (business/parent events are not), while separate Bindings still
   receive their own update; asynchronous notifications start a new transaction.
 - Unkeyed instances are private to a Binding. An explicit key shares one
   explicit ViewModel type identity across Bindings in the same Runtime.

@@ -226,7 +226,7 @@ unkeyed child 对该 parent generation 的 dependency Binding 私有。keyed chi
 
 root ownership 按 source 传播。当前拥有 parent 的每个 root Binding source 都会传递给该 parent 已解析的 child，后续 root bind/unbind 也会实时同步到这些 child。
 
-使用 `read` 进行命令式 child 调用。只有 child 通知必须通过 `onDependencyNotify(child)` 冒泡并继续通知 parent 时，才使用 `watch`。同步传播会按 transaction 去重。
+read 用于命令式调用，watch 将每条 child 通知转发给 parent。只合并根界面刷新，保留所有业务事件与 parent 通知。
 
 ## 依赖访问只能发生在 commit 后
 
@@ -255,7 +255,7 @@ Runtime 会拒绝直接与间接 owner cycle。unkeyed recursion 也会通过活
 - 将编排移到更高层 coordinator；
 - 交换事件或普通函数结果，而不是建立反向 owner edge。
 
-diamond graph 合法。共享 child 的通知会在一个同步 propagation transaction 内去重。
+菱形依赖合法：每条 parent 路径转发事件，每个根 Binding 在同一同步 transaction 仅刷新一次。
 
 ## Generation 与 recycle
 

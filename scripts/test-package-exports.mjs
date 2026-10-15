@@ -118,3 +118,32 @@ try {
   await rm(temporary, { recursive: true, force: true });
 }
 console.log('package exports: ok');
+
+// Shared configuration, overrides, reset, and construction guards must survive conditional imports.
+const reported = [];
+esmCore.ViewModel.reset();
+esmCore.ViewModel.initialize({ config: { onError: (error) => reported.push(error) } });
+assert.equal(cjsCore.ViewModel.config, esmCore.ViewModel.config);
+const family = cjsCore.ViewModelSpec.arg(
+  CrossConditionViewModel,
+  () => new CrossConditionViewModel(),
+  { key: (id) => id },
+);
+const replacement = esmCore.ViewModelSpec.arg(
+  CrossConditionViewModel,
+  () => new CrossConditionViewModel(),
+  { key: (id) => `mock:${id}` },
+);
+await family.runWithOverride(replacement, async (runtime) => {
+  await Promise.resolve();
+  const vm = runtime.createBinding().read(family('shared'));
+  assert.equal(vm.key, 'mock:shared');
+});
+const resetRuntime = new esmCore.ViewModelRuntime();
+const resetVm = resetRuntime.createBinding().read(cjsTypedSpec);
+cjsCore.ViewModel.reset();
+assert.equal(resetVm.isDisposed, true);
+assert.equal(resetRuntime.countInstances(), 0);
+resetRuntime.dispose();
+assert.deepEqual(reported, []);
+console.log('cross-condition Flutter alignment: ok');

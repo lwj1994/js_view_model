@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Align shared core to Flutter 1.2.1 `c5e57d8`, including PR #82 and subsequent ownership/state reentry fixes. Keep Binding lifetime independent of build/render passes.
+- **Breaking:** update auto-notifies after sync/async success; remove onDependencyNotify; listenState/listenStateSelect take (previous, current); preserve every business event and coalesce only root visual refresh.
+- Add arg1-4 families, restorable overrides and isolated Runtime async scopes, global configuration/observers/error reporting, state history, unbind, local visual pause and diagnostic snapshots.
+- Commit exact owner/edge registrations before callbacks; fix reentrant rollback, obsolete releases, tag-batch atomicity, invalid key-hit fallbacks and cross-ESM/CJS identity.
+- Update mirrored API/tutorial/skill/migration documentation and add core/React/Vue/built-package regressions.
+- Remediate development dependency audit with Vitest 4.1.11 and compatible brace-expansion/source-map-js lockfile updates.
+- Do not add Flutter generators/DevTools/Widget APIs or React Web/SSR entries. Async overrides explicitly use the supplied Runtime.
+
 [简体中文](./CHANGELOG_ZH.md)
 
 Significant changes to this project are recorded here.

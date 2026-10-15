@@ -1,3 +1,4 @@
+import { getViewModelConfig } from '../core/config.js';
 import {
   getCurrentInstance,
   getCurrentScope,
@@ -156,8 +157,14 @@ export function useReadViewModel<T extends ViewModel>(
 export function useViewModelSelector<T extends ViewModel, S>(
   spec: ViewModelSpec<T>,
   selector: (vm: T) => S,
-  equals: (previous: S, next: S) => boolean = Object.is,
+  equals?: (previous: S, next: S) => boolean,
   scope?: ViewModelVueScope,
 ): Readonly<ShallowRef<S>> {
-  return useSelection(spec, 'watch', selector, equals, scope);
+  return useSelection(
+    spec,
+    'watch',
+    selector,
+    equals ?? getViewModelConfig().equals ?? Object.is,
+    scope,
+  );
 }

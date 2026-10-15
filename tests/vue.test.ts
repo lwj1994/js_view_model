@@ -139,3 +139,25 @@ describe('Vue bridge', () => {
     runtime.dispose();
   });
 });
+
+it('Vue selectors honor global equality and explicit local overrides', () => {
+  ViewModel.reset();
+  ViewModel.initialize({ config: { equals: () => true } });
+  const effects = effectScope();
+  const runtime = new ViewModelRuntime();
+  try {
+    effects.run(() => {
+      useViewModelScope({ runtime });
+      const vm = useViewModel(spec);
+      const global = useViewModelSelector(spec, (vm) => vm.count);
+      const local = useViewModelSelector(spec, (vm) => vm.count, Object.is);
+      vm.value.increment();
+      expect(global.value).toBe(0);
+      expect(local.value).toBe(1);
+    });
+  } finally {
+    effects.stop();
+    runtime.dispose();
+    ViewModel.reset();
+  }
+});

@@ -378,7 +378,7 @@ it('bubbles watched child changes to the parent owner', () => {
 
 测试 source-aware child 生命周期时，创建由 root Binding A/B 共同持有的 shared keyed parent。在加入 B 前后分别解析 unkeyed child，然后断言 child 会在 `onBind` 中收到当前 root ID；A 离开时只移除 A；B 仍存在时保持同一 generation；每个逻辑 root ID 只有在最后一条 direct 或 parent source 离开后才收到一次 `onUnbind`。用 direct leaf path 加两条 parent path 覆盖多 source，并把其中一例扩展到多层依赖。
 
-测试同步通知 transaction 时，构造 diamond graph，并可让 root 同时直接 watch shared leaf。一次同步 leaf change 对每个 parent 与每个 Binding owner/callback pair 最多通知一次。若两个 Binding 有意复用同一个 callback function，每个 owner/callback pair 仍应各执行一次；后续 microtask 中的通知应开启新 transaction。
+菱形依赖应断言每条 parent 路径的事件均投递，而根 Binding 每个同步 transaction 只请求一次刷新；业务监听保留所有事件，microtask 开启新 transaction。生命周期重入还要覆盖精确登记身份，而非只检查最终计数。基准与测试映射见 flutter-comparison.md。
 
 对于复杂模块图，应添加显式依赖环测试并期待 `ViewModelDependencyCycleError`。依赖环失败不应遗留半创建 generation 或已获取资源。
 

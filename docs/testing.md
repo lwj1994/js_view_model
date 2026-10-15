@@ -378,7 +378,7 @@ Write the corresponding `childRead` test and assert that an ordinary child notif
 
 For source-aware child lifetime, create a shared keyed parent with root Bindings A and B. Resolve an unkeyed child both before and after adding B, then assert that the child receives the current root IDs in `onBind`, removes only A when A leaves, preserves the same generation while B remains, and receives one `onUnbind` only after the last direct or parent source for each logical root ID leaves. Include a direct leaf path plus two parent paths, and extend one case through multiple dependency levels.
 
-For synchronous notification transactions, use a diamond graph and optionally let the root watch the shared leaf directly. One synchronous leaf change should notify each parent and each Binding owner/callback pair at most once. If two Bindings deliberately reuse the same callback function, each owner/callback pair should still run once; a notification scheduled in a later microtask should start a new transaction.
+For a diamond graph, assert every parent path event is delivered and the root Binding requests one refresh per synchronous transaction. Business listeners preserve all events; a later microtask starts a new transaction. Cover lifecycle reentry with exact registration identities, not only final reference counts. See flutter-comparison.md for the source-pinned test map.
 
 For complex module graphs, add an explicit cycle test and expect `ViewModelDependencyCycleError`. A cycle failure should not leave a half-created generation or acquired resource behind.
 

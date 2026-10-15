@@ -154,10 +154,10 @@ Both modes:
 
 Their ordinary-notification behavior differs:
 
-| Parent getter                            | Child ordinary notification | Parent behavior                                                                 |
-| ---------------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
-| `this.viewModelBinding.read(childSpec)`  | Does not bubble             | Parent remains retained but is not notified for the child update                |
-| `this.viewModelBinding.watch(childSpec)` | Bubbles                     | Runtime invokes `parent.onDependencyNotify(child)` and then notifies the parent |
+| Parent getter                            | Child ordinary notification | Parent behavior                                                  |
+| ---------------------------------------- | --------------------------- | ---------------------------------------------------------------- |
+| `this.viewModelBinding.read(childSpec)`  | Does not bubble             | Parent remains retained but is not notified for the child update |
+| `this.viewModelBinding.watch(childSpec)` | Bubbles                     | Runtime notifies the parent for every child event                |
 
 Use `read` when the parent calls child actions or reads the child only during an imperative operation.
 
@@ -184,16 +184,14 @@ class NetworkCoordinator extends ViewModel {
   protected override onCreate(): void {
     // Establish monitoring only after this parent has been acquired.
     void this.connectivity;
-  }
-
-  protected override onDependencyNotify(_child: ViewModel): void {
-    // Reconcile generation-owned resources if needed.
-    // The Runtime notifies this parent automatically after this returns.
+    this.viewModelBinding.listen(this.connectivityDeclaration, () => {
+      // Reconcile generation-owned resources here, without forwarding the event again.
+    });
   }
 }
 ```
 
-Do not call `notifyListeners` in `onDependencyNotify` merely to forward the same child event. The Runtime performs that propagation. If the callback also commits parent state with `setState`, that state commit emits its own notification.
+Watch already forwards dependency events. Use an explicit listen for business work, without forwarding the same event again. A separate parent state commit emits its own event.
 
 ## Binding-owned side-effect listeners
 
@@ -213,7 +211,7 @@ protected override onCreate(): void {
 
 - `listen(spec, callback)` observes ordinary ViewModel notifications.
 - `listenState(spec, callback)` receives complete `StateViewModel` state changes.
-- `listenStateSelect(spec, selector, callback, equals?)` receives selected state changes; equality defaults to `Object.is`.
+- `listenStateSelect(spec, selector, callback, equals?)` receives selected state changes; equality uses the explicit comparator, global configuration, then `Object.is`.
 
 These methods resolve and bind through the supplied Spec, so a parent-to-child lifetime edge is established, but they do not enable broad `watch` bubbling. Each returns a disposer for early listener removal; that disposer does not release the Binding's generation ownership. The Binding also removes the listener automatically when either the Binding or the child generation handle is disposed/recycled.
 
@@ -251,7 +249,7 @@ A dependency getter may be used only after the parent has been attached and acqu
 - `onCreate`;
 - `onBind`;
 - `onPause` and `onResume`;
-- `onDependencyNotify`;
+- Binding-owned business callbacks;
 - other internal work that is known to run after commit/acquire.
 
 `viewModelBinding` is still technically available during `onUnbind`, but teardown code should not establish a new dependency merely because an owner is leaving. Resolve required dependencies earlier and register cleanup against generation-owned resources.
