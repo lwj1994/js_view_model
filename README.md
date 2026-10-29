@@ -1,6 +1,6 @@
 # view_model — State Management, Dependency Injection, and Module Architecture
 
-> Unreleased: shared core aligned to Flutter 1.2.1, plus the Flutter `view_model_lint` 1.3.3 rules as an [ESLint plugin](./docs/lint.md). Read the [migration and coverage guide](./docs/flutter-comparison.md) before upgrading, especially the breaking update, listenState and notification changes.
+> 0.4.0 aligns the shared core to Flutter 1.2.1 and adds the Flutter `view_model_lint` 1.3.3 rules as an [ESLint plugin](./docs/lint.md). Read the [migration and coverage guide](./docs/flutter-comparison.md) before upgrading from 0.3.x, especially the breaking update, listenState and notification changes.
 
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
@@ -21,7 +21,7 @@ instances within an explicit `ViewModelRuntime`, and release resources when
 their final owner leaves.
 
 ```sh
-npm install @lwjlol/view_model@0.3.1
+npm install @lwjlol/view_model@0.4.0
 ```
 
 ## Install Skill

@@ -1,6 +1,12 @@
 # 变更记录
 
-## 未发布
+[English](./CHANGELOG.md)
+
+本文件记录项目的显著变更。
+
+## [Unreleased]
+
+## [0.4.0] - 2026-10-29
 
 - 按 Flutter 1.2.1 `c5e57d8` 对齐共享核心，包括 PR #82 与后续重入所有权、状态事件修复；保留不与 build 耦合的 Binding 生命周期。
 - **破坏性改动：** update 同步/异步成功后自动通知；移除 onDependencyNotify；listenState/listenStateSelect 使用 (previous, current)；业务通知不去重，仅合并根界面刷新。
@@ -11,12 +17,6 @@
 - 记录 Android 0.10.0 与 Apple 0.13.0 背后的宿主契约，runtime 不变：plain Binding 的 `onUpdate` 是同步 transaction 第一个 watched 事件时的刷新请求，宿主应延后读取，并让 Binding 与其捕获的宿主一起 dispose；异步 action 每次 `await` 后先检查 `isDisposed` 再解析依赖。快速开始与 Electron 示例改为延后渲染，示例不再把已解析的 ViewModel 存进模块变量。
 - 修复开发依赖审计：Vitest 4.1.12，以及兼容的 brace-expansion、source-map-js 锁文件更新。
 - 不新增 Flutter 生成器/DevTools/Widget API，也不新增 React Web/SSR 入口；异步覆盖明确使用传入 Runtime。
-
-[English](./CHANGELOG.md)
-
-本文件记录项目的显著变更。
-
-## [Unreleased]
 
 ## [0.3.1] - 2026-09-08
 

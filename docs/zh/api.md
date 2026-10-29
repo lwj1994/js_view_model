@@ -2,7 +2,7 @@
 
 [English](../api.md) · [Flutter 迁移](./flutter-comparison.md)
 
-对齐新增能力尚未发布。从 npm 0.3.1 升级前请先阅读迁移说明。
+对齐新增能力随 0.4.0 发布。从 0.3.x 升级前请先阅读迁移说明。
 
 ## Package 入口
 

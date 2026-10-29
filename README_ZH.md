@@ -1,6 +1,6 @@
 # view_model：状态管理、依赖注入与模块架构
 
-> 未发布：共享核心已对齐 Flutter 1.2.1，并以 [ESLint 插件](./docs/zh/lint.md) 提供 Flutter `view_model_lint` 1.3.3 的规则。升级前请阅读 [迁移与覆盖说明](./docs/zh/flutter-comparison.md)，尤其是 update、listenState 和通知传播的破坏性改动。
+> 0.4.0 将共享核心对齐 Flutter 1.2.1，并以 [ESLint 插件](./docs/zh/lint.md) 提供 Flutter `view_model_lint` 1.3.3 的规则。从 0.3.x 升级前请阅读 [迁移与覆盖说明](./docs/zh/flutter-comparison.md)，尤其是 update、listenState 和通知传播的破坏性改动。
 
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
@@ -15,7 +15,7 @@ npm 包名为 [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_
 `view_model` 不只管理页面状态。功能、repository、service、coordinator、设备连接或领域能力都可以成为受管理的 ViewModel。模块通过 `viewModelBinding` 按需解析彼此，在明确的 `ViewModelRuntime` 内共享实例，并在最后一个 owner 离开后释放资源。
 
 ```sh
-npm install @lwjlol/view_model@0.3.1
+npm install @lwjlol/view_model@0.4.0
 ```
 
 ## Skill 安装

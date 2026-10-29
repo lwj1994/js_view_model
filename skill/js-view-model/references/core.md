@@ -406,4 +406,4 @@ See [API](../../../docs/api.md) for global configuration, positional listenState
 arg1-4 families, override scopes, unbind, local visual pause, reset, diagnostics and non-owning Runtime
 cache queries. ViewModelConfig equality falls back to Object.is, never deep equality implicitly.
 Async helpers require the supplied Runtime and use an isolated cache; manual overrides are realm-wide
-and must be restored in finally. These additions are unreleased, not available in npm 0.3.1.
+and must be restored in finally. These additions ship in 0.4.0 and are not available in 0.3.x.

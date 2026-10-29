@@ -5,7 +5,7 @@
 共享核心语义以 `flutter_view_model` **1.2.1** 为基准，固定到
 [`c5e57d8`](https://github.com/lwj1994/flutter_view_model/tree/c5e57d8cb28922497901cf2b9ffb082221771ad3)。
 范围包括 PR #82 及后续所有权、状态重入修复，不只是 API 名称。
-以下改动**尚未发布**，npm `0.3.1` 不包含这些能力。
+以下改动随 **0.4.0** 发布，npm `0.3.x` 不包含这些能力。
 
 ## 共享核心覆盖
 

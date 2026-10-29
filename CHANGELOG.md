@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+[简体中文](./CHANGELOG_ZH.md)
+
+Significant changes to this project are recorded here.
+
+## [Unreleased]
+
+## [0.4.0] - 2026-10-29
 
 - Align shared core to Flutter 1.2.1 `c5e57d8`, including PR #82 and subsequent ownership/state reentry fixes. Keep Binding lifetime independent of build/render passes.
 - **Breaking:** update auto-notifies after sync/async success; remove onDependencyNotify; listenState/listenStateSelect take (previous, current); preserve every business event and coalesce only root visual refresh.
@@ -11,12 +17,6 @@
 - Document the host contracts behind Android 0.10.0 and Apple 0.13.0 without runtime changes: a plain Binding's `onUpdate` is a refresh request at the first watched event of a synchronous transaction, so hosts defer their read and dispose a Binding with the host it captures; async actions check `isDisposed` after each `await` before resolving dependencies. The getting-started and Electron examples now defer rendering, and no example stores a resolved ViewModel in a module variable.
 - Remediate development dependency audit with Vitest 4.1.12 and compatible brace-expansion/source-map-js lockfile updates.
 - Do not add Flutter generators/DevTools/Widget APIs or React Web/SSR entries. Async overrides explicitly use the supplied Runtime.
-
-[简体中文](./CHANGELOG_ZH.md)
-
-Significant changes to this project are recorded here.
-
-## [Unreleased]
 
 ## [0.3.1] - 2026-09-08
 

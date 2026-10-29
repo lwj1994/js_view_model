@@ -26,7 +26,7 @@ const configs = {} as { recommended: Linter.Config };
  * typescript-eslint type information (`parserOptions.projectService`).
  */
 const plugin: ViewModelLintPlugin = {
-  meta: { name: '@lwjlol/view_model/eslint', version: '0.3.1' },
+  meta: { name: '@lwjlol/view_model/eslint', version: '0.4.0' },
   rules,
   configs,
 };

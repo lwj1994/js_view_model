@@ -2,7 +2,7 @@
 
 [简体中文](./zh/api.md) · [Flutter migration](./flutter-comparison.md)
 
-The alignment additions are unreleased. See the migration guide before upgrading from npm 0.3.1.
+The alignment additions ship in 0.4.0. See the migration guide before upgrading from 0.3.x.
 
 ## Package entries
 

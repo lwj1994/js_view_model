@@ -5,7 +5,7 @@
 The shared-core contract is aligned to `flutter_view_model` **1.2.1**, pinned to
 [`c5e57d8`](https://github.com/lwj1994/flutter_view_model/tree/c5e57d8cb28922497901cf2b9ffb082221771ad3).
 This includes PR #82 and the subsequent ownership and reentrant-state fixes, not just API names.
-The changes below are **unreleased**; npm `0.3.1` does not contain them.
+The changes below ship in **0.4.0**; npm `0.3.x` does not contain them.
 
 ## Shared-core coverage
 
