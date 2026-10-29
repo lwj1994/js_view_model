@@ -28,9 +28,10 @@ and domain capabilities can use the same runtime without React.
 ### I am maintaining or reviewing a project
 
 1. [Testing and package validation](./testing.md)
-2. [API reference](./api.md)
-3. [Lifecycle, StrictMode, and pause/resume](./lifecycle.md)
-4. [Identity, ownership, retention, and recycle](./identity-and-lifetime.md)
+2. [ESLint rules](./lint.md)
+3. [API reference](./api.md)
+4. [Lifecycle, StrictMode, and pause/resume](./lifecycle.md)
+5. [Identity, ownership, retention, and recycle](./identity-and-lifetime.md)
 
 ## Module index
 
@@ -46,6 +47,7 @@ and domain capabilities can use the same runtime without React.
 | [Electron](./electron.md)                           | How should renderer, preload, main, windows, lifecycle, and IPC boundaries be designed?  |
 | [Testing](./testing.md)                             | How do I test core modules, React bindings, lifecycle, package exports, and cleanup?     |
 | [API reference](./api.md)                           | What does each currently exported class, function, hook, type, and error mean?           |
+| [ESLint rules](./lint.md)                           | Which usage mistakes does the optional ESLint plugin catch, and how are they fixed?      |
 | [Flutter comparison](./flutter-comparison.md)       | Which concepts are shared with Flutter `view_model`, and which APIs or semantics differ? |
 
 ## Invariants to remember
@@ -68,5 +70,6 @@ and domain capabilities can use the same runtime without React.
 Public application entry points include `@lwjlol/view_model/core`,
 `@lwjlol/view_model/react-native`, `@lwjlol/view_model/electron`, and the optional
 `@lwjlol/view_model/vue` and `@lwjlol/view_model/taro-vue` bridges.
-See [Vue 3 / Taro 4 integration](./vue-taro.md). There is no `@lwjlol/view_model/react`, and this
+See [Vue 3 / Taro 4 integration](./vue-taro.md). The optional `@lwjlol/view_model/eslint`
+entry is an ESLint plugin loaded only by the lint process; see [ESLint rules](./lint.md). There is no `@lwjlol/view_model/react`, and this
 package makes no React Web, SSR, RSC, or browser hydration promise.

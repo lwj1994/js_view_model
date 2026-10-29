@@ -10,7 +10,9 @@
     "dependency-injection",
     "lifecycle",
     "vue",
-    "taro"
+    "taro",
+    "eslint",
+    "eslint-plugin"
   ],
   "homepage": "https://github.com/lwj1994/js_view_model#readme",
   "bugs": {
@@ -71,6 +73,11 @@
       "types": "./dist/types/taro-vue/index.d.ts",
       "import": "./dist/taro-vue/index.js",
       "require": "./dist/taro-vue/index.cjs"
+    },
+    "./eslint": {
+      "types": "./dist/types/eslint/index.d.ts",
+      "import": "./dist/eslint/index.js",
+      "require": "./dist/eslint/index.cjs"
     }
   },
   "engines": {
@@ -94,7 +101,10 @@
     "electron": ">=30",
     "react": ">=18.3.1 <20",
     "react-native": ">=0.76",
-    "vue": ">=3.3 <4"
+    "vue": ">=3.3 <4",
+    "eslint": ">=9",
+    "typescript": ">=5.0",
+    "@typescript-eslint/parser": ">=8"
   },
   "peerDependenciesMeta": {
     "electron": {
@@ -111,20 +121,31 @@
     },
     "@tarojs/taro": {
       "optional": true
+    },
+    "eslint": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    },
+    "@typescript-eslint/parser": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@types/node": "26.1.2",
     "@types/react": "19.2.18",
     "@types/react-test-renderer": "19.1.0",
+    "@typescript-eslint/parser": "8.72.1",
     "esbuild": "0.28.1",
+    "eslint": "10.13.0",
     "prettier": "3.9.6",
     "react": "19.2.8",
     "react-test-renderer": "19.2.8",
     "rimraf": "6.1.2",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
-    "vitest": "4.1.11",
+    "vitest": "4.1.12",
     "vue": "3.5.42"
   },
   "overrides": {

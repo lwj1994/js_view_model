@@ -112,6 +112,24 @@ function. Always restore it in `finally`; do not overlap it across independent a
 change future resolution, not existing generations. `withKey` creates a separate concrete declaration;
 install an override on that declaration (or use an argument family) when it needs to be overridden.
 
+## Usage lint and host contracts
+
+The usage rules are aligned to `view_model_lint` **1.3.3**, pinned to
+[`0a94737`](https://github.com/lwj1994/flutter_view_model/tree/0a94737c9e815de7c6e6cd7dd46cd158f95f5936), and ship as the optional
+`@lwjlol/view_model/eslint` plugin. All ten default warnings, the opt-in cached-lookup rule, and the
+four quick fixes are available; ESLint's `--fix` replaces Flutter's separate batch command. See
+[ESLint rules](./lint.md) for the rule mapping and JavaScript differences; `tests/eslint/` verifies
+every rule and every documented example.
+
+Two host contracts follow the cross-platform review behind Android 0.10.0 and Apple 0.13.0. The
+runtime is unchanged; only the documented contract and examples are:
+
+- `onUpdate` is a refresh request at the first watched event of a synchronous transaction, not a
+  render callback. Hosts defer their read, and dispose a Binding together with the host its
+  callback captures.
+- An asynchronous action checks `isDisposed` after each `await` before resolving dependencies, because
+  `viewModelBinding` rejects an ended generation.
+
 ## Host-specific boundaries
 
 Core dependency lifetime follows Binding ownership, **not build/render collection**. React render can

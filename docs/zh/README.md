@@ -23,9 +23,10 @@
 ### 维护或审查项目
 
 1. [测试与包验证](./testing.md)
-2. [API 参考](./api.md)
-3. [生命周期、StrictMode 与暂停恢复](./lifecycle.md)
-4. [身份、owner、保活与 recycle](./identity-and-lifetime.md)
+2. [ESLint 规则](./lint.md)
+3. [API 参考](./api.md)
+4. [生命周期、StrictMode 与暂停恢复](./lifecycle.md)
+5. [身份、owner、保活与 recycle](./identity-and-lifetime.md)
 
 ## 模块索引
 
@@ -41,6 +42,7 @@
 | [Electron](./electron.md)                    | renderer、preload、main、窗口生命周期与 IPC 边界应怎样设计？              |
 | [测试](./testing.md)                         | 如何测试 core module、React binding、生命周期、包入口与资源清理？         |
 | [API 参考](./api.md)                         | 当前导出的 class、function、hook、type 与 error 各自语义是什么？          |
+| [ESLint 规则](./lint.md)                     | 可选 ESLint 插件能发现哪些用法错误，如何修复？                            |
 | [Flutter 版本差异](./flutter-comparison.md)  | 哪些理念与 Flutter `view_model` 相同，哪些 API 或语义不同？               |
 
 ## 必须记住的约束
@@ -57,4 +59,4 @@
 
 ## 支持边界
 
-公开应用入口包括 `@lwjlol/view_model/core`、`@lwjlol/view_model/react-native`、`@lwjlol/view_model/electron`，以及可选的 `@lwjlol/view_model/vue` 和 `@lwjlol/view_model/taro-vue` 桥接，详见 [Vue 3 / Taro 4 集成](./vue-taro.md)。本库没有 `@lwjlol/view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。
+公开应用入口包括 `@lwjlol/view_model/core`、`@lwjlol/view_model/react-native`、`@lwjlol/view_model/electron`，以及可选的 `@lwjlol/view_model/vue` 和 `@lwjlol/view_model/taro-vue` 桥接，详见 [Vue 3 / Taro 4 集成](./vue-taro.md)。可选的 `@lwjlol/view_model/eslint` 入口是只在 lint 进程中加载的 ESLint 插件，详见 [ESLint 规则](./lint.md)。本库没有 `@lwjlol/view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。

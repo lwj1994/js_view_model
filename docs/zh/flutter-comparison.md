@@ -110,6 +110,22 @@ await userSpec.runWithOverride(fakeUserSpec, async (runtime) => {
 覆盖只改变后续解析，不替换已存在 generation。
 `withKey` 产生独立的具体声明；需要覆盖时对该声明安装 override，或使用参数化 family。
 
+## 用法检查与宿主契约
+
+用法规则对齐 `view_model_lint` **1.3.3**，固定到
+[`0a94737`](https://github.com/lwj1994/flutter_view_model/tree/0a94737c9e815de7c6e6cd7dd46cd158f95f5936)，以可选的
+`@lwjlol/view_model/eslint` 插件提供。十条默认警告、可选的 cached-lookup 规则和四个快速修复都已
+提供；ESLint 的 `--fix` 取代 Flutter 单独的批量修复命令。规则对应关系与 JavaScript 差异见
+[ESLint 规则](./lint.md)；`tests/eslint/` 验证每条规则以及文档中的每个示例。
+
+两项宿主契约沿用 Android 0.10.0 与 Apple 0.13.0 背后的跨端评审结论。runtime 不变，只更新文档
+契约与示例：
+
+- `onUpdate` 是在同步 transaction 第一个 watched 事件时发出的刷新请求，不是渲染回调。宿主应延后
+  读取，并让 Binding 与其 callback 捕获的宿主一起 dispose。
+- 异步 action 每次 `await` 后先检查 `isDisposed` 再解析依赖，因为 `viewModelBinding` 会拒绝已结束
+  的 generation。
+
 ## 宿主差异边界
 
 核心依赖生命周期跟随 Binding 所有权，**不收集或清理 build/render 依赖**。

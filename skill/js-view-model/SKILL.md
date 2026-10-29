@@ -1,6 +1,6 @@
 ---
 name: js-view-model
-description: Build or refactor React Native, Electron, and optional Taro Vue functional modules and state management with @lwjlol/view_model, including application-wide dependency injection, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, watch/read and cached lookup semantics, lifecycle, pause-resume, testing, and platform integration.
+description: Build or refactor React Native, Electron, and optional Taro Vue functional modules and state management with @lwjlol/view_model, including application-wide dependency injection, ViewModelSpec identity and sharing, Runtime/Binding/Scope ownership, watch/read and cached lookup semantics, lifecycle, pause-resume, testing, platform integration, and type-aware ESLint lint integration.
 ---
 
 # JS ViewModel Skill
@@ -213,6 +213,8 @@ Do:
 - Give every lifecycle owner its own managed resolution path.
 - Use an explicit key when cross-Binding sharing is a real requirement.
 - Dispose plain Bindings and externally owned Runtimes explicitly.
+- Enable the `@lwjlol/view_model/eslint` recommended rules in application and
+  business packages.
 - Keep code comments in English.
 
 Don't:
@@ -245,6 +247,61 @@ Don't:
 - `runtime.recycle(instance)` force-disposes one generation.
   `runtime.recycle(unkeyedSpec)` can match one private generation per Binding.
 - Runtime pause/resume is token-aggregated and invokes VM hooks. Binding pause/resume independently delays only that owner's visual callbacks.
+- A plain Binding's `onUpdate` is a refresh request at the first watched event of
+  a synchronous transaction, not a render callback. Schedule the host's read and
+  render instead of reading inside `onUpdate`, and dispose the Binding together
+  with any host the callback captures.
+- An async action can resume after its generation ended. Late state writes are
+  ignored, but `viewModelBinding` and dependency getters throw
+  `ViewModelDisposedError`; check `this.isDisposed` after each `await` before
+  resolving dependencies or starting more work.
+
+## Recommended lint checks
+
+Recommend enabling the type-aware ESLint plugin when adding or reviewing
+ViewModel code in an application or business package. It is the optional
+`@lwjlol/view_model/eslint` entry, loads only in the lint process, and adds no
+app runtime dependency. Preserve the consumer's existing ESLint configuration
+and add, for TypeScript files:
+
+```js
+import tsParser from '@typescript-eslint/parser';
+import viewModel from '@lwjlol/view_model/eslint';
+
+export default [
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+  },
+  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+];
+```
+
+Ten warnings are enabled by default, all prefixed with `view-model/`:
+`dependency-cycle`, `cached-instance`, `alive-forever-key`,
+`unmanaged-construction`, `listen-in-render`, `instance-handoff`,
+`identity-collision`, `selector-with-watch`, `undisposed-binding`, and
+`temporary-spec`. `view-model/cached-lookup` is opt-in. The
+[rule guide](../../docs/lint.md) shows a bad and a good example for every rule;
+use it when fixing a diagnostic. `npx eslint . --fix` applies the fixes for
+`cached-instance`, `alive-forever-key`, `selector-with-watch`, and
+`temporary-spec`. Run `npx eslint . --max-warnings 0` from the package root
+locally and in CI.
+
+Fix ownership/spec violations before disabling a rule. Unkeyed argument
+families may omit `key`; `identity-collision` reports one Binding resolving them
+with different arguments, or two unkeyed explicit-type Specs of one type.
+`aliveForever` still requires a key. `dependency-cycle` compares types through
+own-Binding `read/watch/listen*` calls in program sources; it does not prove
+key-aware instance cycles, so keep runtime validation.
+
+- Declare every Spec as a module-level or static variable. Never create one in a
+  local variable, instance field, component render, or inline at a
+  `watch/read`/hook call; `temporary-spec` reports those. Generic ViewModels use
+  a generic function that only returns the Spec.
 
 ## Flutter alignment
 

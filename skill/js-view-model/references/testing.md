@@ -3,7 +3,8 @@
 ## Core test pattern
 
 Create a fresh Runtime and Binding for each test. Dispose both even when the
-assertion fails. Prefer stable explicit-type Specs such as
+assertion fails; `view-model/undisposed-binding` reports test owners that are
+never disposed. Prefer stable explicit-type Specs such as
 `viewModelSpec(TestViewModel, () => new TestViewModel())` and test through public
 Binding APIs.
 

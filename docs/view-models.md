@@ -234,6 +234,16 @@ The callback signatures return `void`, and the Runtime does not await promises r
 
 Recycle or final release ends a generation. Late state writes and notify are ignored; updateState does not run its updater. New subscriptions, update and dependency resolution still reject disposed generations.
 
+An asynchronous action can resume after its generation ended, for example when recycle or the last owner's release happens during an `await`. State writes are then ignored, but `viewModelBinding` and every dependency getter throw `ViewModelDisposedError`. After each `await`, check `isDisposed` before resolving dependencies or starting more work:
+
+```ts
+public async refresh(): Promise<void> {
+  const token = await this.auth.requireToken();
+  if (this.isDisposed) return;
+  await this.orders.load(token);
+}
+```
+
 Do not retain a ViewModel reference in a long-lived service and assume it will remain current. Retain a stable Spec and resolve it from the current Binding when needed, especially across explicit recycle.
 
 Automatic release after the last owner leaves is scheduled through a microtask. Immediately after `binding.dispose()`, a non-`aliveForever` instance may not yet report `isDisposed`. `runtime.recycle(...)` and `runtime.dispose()` force disposal synchronously.

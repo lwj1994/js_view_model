@@ -8,6 +8,7 @@
 
 `@lwjlol/view_model` 与 `/core` 导出不依赖框架的 API。
 `/react-native`、`/electron`、`/vue` 和 `/taro-vue` 重导出 core，并增加可选宿主适配。
+`/eslint` 是可选的类型感知 ESLint 插件，只在 lint 进程中加载，不会导入 runtime，详见 [ESLint 规则](./lint.md)。
 没有公开 `/react` 入口，也不承诺 Web/SSR/RSC。下划线前缀和 `@internal` 成员属于实现细节，
 即使在源码中可见，也不应由应用调用。
 
@@ -230,6 +231,9 @@ read 升级 watch 不重建实例，后续 read 不会降级 watch。
 
 `watch(spec, listener)` 与 `onUpdate` 是界面刷新回调，按 transaction 合并并受界面暂停控制。
 逐条业务事件请使用 listen，不要用 watch 的可选 callback。
+`onUpdate` 是刷新请求：它在同步 transaction 的第一个 watched 事件时执行，同一 transaction 的后续事件不会再次触发。
+宿主应调度读取与渲染（microtask、animation frame 或宿主调度器）；在 `onUpdate` 内同步读取可能渲染出中间态。
+Binding 若比其 `onUpdate` 捕获的宿主活得更久，会让该宿主无法释放，因此两者应一起 dispose。
 
 ```ts
 const stop = binding.listen(spec, () => {});

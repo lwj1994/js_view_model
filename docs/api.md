@@ -8,6 +8,8 @@ The alignment additions are unreleased. See the migration guide before upgrading
 
 `@lwjlol/view_model` and `/core` export the framework-independent API.
 `/react-native`, `/electron`, `/vue`, and `/taro-vue` re-export core and add their optional host adapters.
+`/eslint` is the optional type-aware ESLint plugin; it loads only in the lint process and never
+imports the runtime. See [ESLint rules](./lint.md).
 There is no public `/react` entry and no Web/SSR/RSC contract. Underscore-prefixed and `@internal`
 members are implementation details, even when visible in source.
 
@@ -237,6 +239,10 @@ persist until explicit unbind, recycle or disposal, not until the next render/bu
 
 `watch(spec, listener)` callbacks and `onUpdate` are visual refresh callbacks, coalesced per transaction
 and deferred by visual pause. For every business event use `listen`, not the optional watch callback.
+`onUpdate` is a refresh request: it runs at the first watched event of a synchronous transaction and not
+again for later events in that transaction. Schedule the host's read and render (microtask, animation
+frame, or the host scheduler); reading synchronously inside `onUpdate` can render an intermediate state.
+A Binding outliving the host its `onUpdate` captures keeps that host alive, so dispose them together.
 
 ```ts
 const stop = binding.listen(spec, () => {});

@@ -270,9 +270,7 @@ const windowCoordinatorSpec = viewModelSpec(() => new WindowCoordinator(), {
 
 const mainRuntime = new ViewModelRuntime();
 const applicationBinding = mainRuntime.createBinding({ id: 'electron-main' });
-const windowCoordinator = applicationBinding.read(windowCoordinatorSpec);
-
-await windowCoordinator.restoreWindows();
+await applicationBinding.read(windowCoordinatorSpec).restoreWindows();
 ```
 
 The Runtime is main's application-level DI boundary. Multiple main-process Bindings can share a keyed module through it, while unkeyed modules remain private to their Binding.
@@ -282,11 +280,14 @@ For an owner that needs broad update callbacks, provide `onUpdate` when creating
 ```ts
 const trayBinding = mainRuntime.createBinding({
   id: 'tray-owner',
-  onUpdate: () => refreshTrayMenu(),
+  // Request a refresh; rebuild the menu from the final state when it runs.
+  onUpdate: () => scheduleTrayMenuRefresh(),
 });
 
 const trayModel = trayBinding.watch(traySpec);
 ```
+
+`onUpdate` runs at the first watched event of a synchronous update, so schedule the menu rebuild (for example with `setImmediate`) rather than reading state synchronously. Dispose the Binding together with the tray or window its callback captures.
 
 Do not repeatedly call `watch(spec, listener)` from transient code; subscriptions passed directly to plain `watch` remain registered until the current generation or Binding is disposed. For a direct ViewModel subscription, keep the unsubscribe function and register explicit cleanup.
 

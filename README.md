@@ -1,6 +1,6 @@
 # view_model — State Management, Dependency Injection, and Module Architecture
 
-> Unreleased: shared core aligned to Flutter 1.2.1. Read the [migration and coverage guide](./docs/flutter-comparison.md) before upgrading, especially the breaking update, listenState and notification changes.
+> Unreleased: shared core aligned to Flutter 1.2.1, plus the Flutter `view_model_lint` 1.3.3 rules as an [ESLint plugin](./docs/lint.md). Read the [migration and coverage guide](./docs/flutter-comparison.md) before upgrading, especially the breaking update, listenState and notification changes.
 
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
@@ -49,6 +49,7 @@ is in [`skill/js-view-model`](./skill/js-view-model/SKILL.md).
 - [Supported Entry Points](#supported-entry-points)
 - [Getting Started](#getting-started)
 - [Core Rules](#core-rules)
+- [Recommended Usage Lint](#recommended-usage-lint)
 - [Documentation](#documentation)
 
 ---
@@ -230,6 +231,7 @@ a substitute for managed sharing.
 | Electron renderer                           | `@lwjlol/view_model/electron`     | Supported       |
 | Vue 3 bridge                                | `@lwjlol/view_model/vue`          | Optional        |
 | Taro 4 + Vue 3                              | `@lwjlol/view_model/taro-vue`     | Optional        |
+| ESLint (lint process only)                  | `@lwjlol/view_model/eslint`       | Optional        |
 | Ordinary React Web / SSR                    | None                              | **Unsupported** |
 
 The platform entries re-export the core API. Import ViewModel classes and Specs
@@ -396,6 +398,39 @@ then expose serializable DTOs/events through a narrow preload IPC API.
 - One hook cleanup removes only that hook listener. The Scope Binding retains
   ownership until the Scope itself is disposed or the generation is recycled.
 
+## Recommended usage lint
+
+Enable the optional type-aware ESLint plugin in every application or business
+package. It checks potential dependency cycles, stored resolved ViewModels,
+missing keys for `aliveForever`, unmanaged construction, listeners registered on
+every render or getter access, ViewModels passed through constructors or props,
+unkeyed identity collisions, `useViewModel` next to a selector, undisposed
+Bindings and Runtimes, and specs that are not module-level or static variables.
+ESLint loads it only in the lint process; it adds nothing to the app bundle.
+
+```js
+import tsParser from '@typescript-eslint/parser';
+import viewModel from '@lwjlol/view_model/eslint';
+
+export default [
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+  },
+  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+];
+```
+
+Run `npx eslint . --max-warnings 0` locally and in CI, and `npx eslint . --fix` to
+apply the available fixes. `view-model/cached-lookup` is an opt-in rule. Prefer a
+local `eslint-disable-next-line` with a reason for an intentional exception.
+Type-cycle warnings do not prove an instance cycle and do not replace runtime
+validation. See the [rule guide](./docs/lint.md) for good and bad examples of
+every rule.
+
 ## Documentation
 
 - [Documentation index](./docs/README.md)
@@ -409,6 +444,7 @@ then expose serializable DTOs/events through a narrow preload IPC API.
 - [Electron integration](./docs/electron.md)
 - [Testing and package validation](./docs/testing.md)
 - [API reference](./docs/api.md)
+- [ESLint rules](./docs/lint.md)
 - [Differences from Flutter `view_model`](./docs/flutter-comparison.md)
 
 Every module has a matching Chinese document linked from its first line.

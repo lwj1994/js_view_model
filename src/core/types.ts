@@ -34,6 +34,14 @@ export interface ViewModelCacheLookup {
 
 export interface ViewModelBindingOptions {
   readonly id?: string;
+  /**
+   * A coalesced refresh request for watched ViewModels, not a business
+   * listener. It runs at the first watched event of a synchronous update
+   * transaction and not again for later events in that transaction, so a host
+   * must defer its read (for example to a microtask or the next frame); a
+   * synchronous read can render an intermediate state. Dispose the Binding
+   * together with any host the callback captures.
+   */
   readonly onUpdate?: ViewModelListener;
 }
 

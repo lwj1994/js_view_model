@@ -103,9 +103,20 @@ function renderHost(): void {
   console.log(`count: ${counter.state.count}`);
 }
 
+// onUpdate requests a refresh; render once the synchronous update has finished.
+let renderScheduled = false;
+function scheduleRender(): void {
+  if (renderScheduled) return;
+  renderScheduled = true;
+  queueMicrotask(() => {
+    renderScheduled = false;
+    if (!binding.isDisposed) renderHost();
+  });
+}
+
 const binding = runtime.createBinding({
   id: 'application-host',
-  onUpdate: renderHost,
+  onUpdate: scheduleRender,
 });
 
 renderHost();
@@ -122,6 +133,8 @@ runtime.dispose();
 - `binding.watch(spec)` 解析并保活实例，并把普通通知转发给 Binding 的 `onUpdate` callback。
 
 两种模式都会参与 owner 与生命周期管理。`read` 不表示“临时”或“不受管理”。
+
+`onUpdate` 是刷新请求，不是渲染回调。它在一次同步更新的第一个 watched 事件时执行，同一次更新的后续事件不会再次调用它，所以示例调度 `renderHost`，而不是在 `onUpdate` 内读取状态。一次变化引发其他变化时，在这里同步读取可能渲染出中间态。
 
 示例从 `renderHost` 中再次调用 `binding.watch(counterSpec)`。该调用对当前 identity 幂等，也使宿主能在显式 recycle 后解析新的 generation。
 
@@ -151,7 +164,10 @@ export const applicationBinding = applicationRuntime.createBinding({
   id: 'application',
 });
 
-export const session = applicationBinding.read(sessionSpec);
+// Resolve through the owner on every access instead of exporting the instance.
+export function currentSession(): SessionViewModel {
+  return applicationBinding.read(sessionSpec);
+}
 ```
 
 只要 `applicationBinding` 仍然存活，它就是 session 的 owner。仅仅因为 Binding 具有应用生命周期，并不需要使用 `aliveForever`。

@@ -1,6 +1,6 @@
 # view_model：状态管理、依赖注入与模块架构
 
-> 未发布：共享核心已对齐 Flutter 1.2.1。升级前请阅读 [迁移与覆盖说明](./docs/zh/flutter-comparison.md)，尤其是 update、listenState 和通知传播的破坏性改动。
+> 未发布：共享核心已对齐 Flutter 1.2.1，并以 [ESLint 插件](./docs/zh/lint.md) 提供 Flutter `view_model_lint` 1.3.3 的规则。升级前请阅读 [迁移与覆盖说明](./docs/zh/flutter-comparison.md)，尤其是 update、listenState 和通知传播的破坏性改动。
 
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
@@ -41,6 +41,7 @@ npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
 - [支持入口](#支持入口)
 - [快速开始](#快速开始)
 - [核心规则](#核心规则)
+- [推荐的用法检查](#推荐的用法检查)
 - [文档](#文档)
 
 ---
@@ -180,6 +181,7 @@ export function shutdownApplication(): void {
 | Electron renderer                   | `@lwjlol/view_model/electron`     | 支持       |
 | Vue 3 bridge                        | `@lwjlol/view_model/vue`          | 可选       |
 | Taro 4 + Vue 3                      | `@lwjlol/view_model/taro-vue`     | 可选       |
+| ESLint（仅在 lint 进程中）          | `@lwjlol/view_model/eslint`       | 可选       |
 | 普通 React Web / SSR                | 无                                | **不支持** |
 
 平台入口会重导出 core API。建议从 `@lwjlol/view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `@lwjlol/view_model/react`。
@@ -311,6 +313,35 @@ Electron main 不使用 hooks。使用 `ViewModelRuntime` 与 plain Binding，�
 - `recycle` 是越过全部 owner 的 Runtime 级强制销毁。除非明确需要全局失效，否则优先使用新的显式 key。
 - 单个 hook cleanup 只移除自己的 listener；Scope Binding 会继续保有实例，直到 Scope dispose 或 generation 被 recycle。
 
+## 推荐的用法检查
+
+建议在每个应用或业务 package 中启用可选的类型感知 ESLint 插件。它检查潜在的依赖环、
+存起来的已解析 ViewModel、`aliveForever` 缺少 key、非托管构造、每次 render 或 getter
+访问都注册的监听、通过构造函数或 props 传递的 ViewModel、不带 key 的身份冲突、与
+selector 并用的 `useViewModel`、未 dispose 的 Binding 与 Runtime，以及不是模块级或
+static 变量的 Spec。它只在 ESLint 进程中加载，不会进入应用 bundle。
+
+```js
+import tsParser from '@typescript-eslint/parser';
+import viewModel from '@lwjlol/view_model/eslint';
+
+export default [
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+  },
+  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+];
+```
+
+本地与 CI 都运行 `npx eslint . --max-warnings 0`，用 `npx eslint . --fix` 应用可用的
+修复。`view-model/cached-lookup` 需要手动开启。有意为之的例外请使用带原因的局部
+`eslint-disable-next-line`。类型层面的依赖环警告不能证明实例层面存在环，也不能替代
+运行时校验。每条规则的正反示例见 [规则指南](./docs/zh/lint.md)。
+
 ## 文档
 
 - [文档索引](./docs/zh/README.md)
@@ -324,6 +355,7 @@ Electron main 不使用 hooks。使用 `ViewModelRuntime` 与 plain Binding，�
 - [Electron 集成](./docs/zh/electron.md)
 - [测试与包验证](./docs/zh/testing.md)
 - [API 参考](./docs/zh/api.md)
+- [ESLint 规则](./docs/zh/lint.md)
 - [与 Flutter `view_model` 的差异](./docs/zh/flutter-comparison.md)
 
 英文与中文模块保持一一对应，并在每篇文档首行互链。

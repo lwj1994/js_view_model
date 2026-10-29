@@ -74,8 +74,7 @@ const syncSpec = viewModelSpec(SyncViewModel, () => new SyncViewModel(sessionSpe
 const runtime = new ViewModelRuntime();
 const application = runtime.createBinding({ id: 'application' });
 
-const sync = application.read(syncSpec);
-const authorization = await sync.authorizationHeader();
+const authorization = await application.read(syncSpec).authorizationHeader();
 
 application.dispose();
 runtime.dispose();

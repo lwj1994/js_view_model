@@ -163,7 +163,11 @@ runtime.dispose();
 
 `read(spec)` resolves and owns the instance but ignores ordinary ViewModel
 notifications. `watch(spec)` resolves, owns, and propagates ordinary
-notifications to `onUpdate`; its optional listener belongs to the current
+notifications to `onUpdate`. `onUpdate` is a refresh request at the first
+watched event of a synchronous transaction and is not called again for later
+events in it: schedule the host's read and render, as `scheduleSync` does,
+because a synchronous read can observe an intermediate state. Dispose a Binding
+together with any host its `onUpdate` captures. The optional watch listener belongs to the current
 Binding entry and has no per-listener disposer. Prefer the Binding-owned
 `listen*` APIs when a side-effect subscription needs explicit or automatic
 cleanup.
@@ -290,6 +294,11 @@ class CheckoutViewModel extends ViewModel {
   }
 }
 ```
+
+An async action can resume after recycle or final release ended its generation.
+State writes are then ignored, but `viewModelBinding` and every dependency
+getter throw `ViewModelDisposedError`. Check `isDisposed` after each `await`
+before resolving dependencies or starting more work.
 
 Every parent generation has a stable private dependency Binding. Resolving a
 child establishes a parent-to-child ownership edge, so the child cannot be

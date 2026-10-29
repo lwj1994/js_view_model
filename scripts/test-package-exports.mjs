@@ -13,7 +13,16 @@ assert.equal(
   0,
   'Core must have no required framework dependencies',
 );
-for (const peer of ['react', 'react-native', 'electron', 'vue', '@tarojs/taro']) {
+for (const peer of [
+  'react',
+  'react-native',
+  'electron',
+  'vue',
+  '@tarojs/taro',
+  'eslint',
+  'typescript',
+  '@typescript-eslint/parser',
+]) {
   assert.equal(manifest.peerDependenciesMeta[peer].optional, true, `${peer} must remain opt-in`);
 }
 const esmCore = await import('../dist/core/index.js');
@@ -173,3 +182,48 @@ for (const resetter of [esmCore, cjsCore]) {
   }
 }
 console.log('cross-condition reset recovery: ok');
+
+// The ESLint entry runs in the lint process: it must not load the runtime core,
+// and its type-aware rules must recognize the published declaration files.
+const esmLint = (await import('@lwjlol/view_model/eslint')).default;
+// A default-only CJS entry is the plugin itself, as `eslint.config.cjs` expects.
+const cjsLint = require('@lwjlol/view_model/eslint');
+for (const lintPlugin of [esmLint, cjsLint]) {
+  assert.equal(lintPlugin.meta.version, manifest.version, 'Lint plugin version must match package');
+  assert.equal(Object.keys(lintPlugin.rules).length, 11);
+  assert.equal(lintPlugin.configs.recommended.plugins['view-model'], lintPlugin);
+}
+const { Linter } = await import('eslint');
+const lintParser = await import('@typescript-eslint/parser');
+const lintMessages = new Linter({ configType: 'flat' }).verify(
+  `import { ViewModel, viewModelSpec } from '@lwjlol/view_model';
+class CounterViewModel extends ViewModel {}
+export const counterSpec = viewModelSpec(CounterViewModel, () => new CounterViewModel(), {
+  aliveForever: true,
+});
+export const unmanaged = new CounterViewModel();
+`,
+  [
+    {
+      files: ['**/*.ts'],
+      languageOptions: {
+        parser: lintParser,
+        parserOptions: {
+          projectService: {
+            allowDefaultProject: ['tests/eslint/fixtures/case.ts'],
+            defaultProject: 'tests/eslint/tsconfig.json',
+          },
+          tsconfigRootDir: resolve('.'),
+        },
+      },
+      ...esmLint.configs.recommended,
+    },
+  ],
+  resolve('tests/eslint/fixtures/case.ts'),
+);
+assert.deepEqual(
+  lintMessages.map((message) => message.ruleId),
+  ['view-model/alive-forever-key', 'view-model/unmanaged-construction'],
+  JSON.stringify(lintMessages),
+);
+console.log('eslint plugin against published types: ok');

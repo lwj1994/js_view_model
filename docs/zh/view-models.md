@@ -230,7 +230,17 @@ callback signature 返回 `void`，Runtime 不会 await `async` override 意外�
 
 ## 已 dispose 的 generation
 
-Recycle 或最终 release 会永久结束一个 generation。disposal 后，修改状态的 protected API 会调用 `assertAlive` 并抛出 `ViewModelDisposedError`。
+Recycle 或最终 release 会永久结束一个 generation。之后迟到的状态写入与 notify 会被忽略，`updateState` 不会运行其 updater。新的订阅、`update` 与依赖解析仍会拒绝已 dispose 的 generation。
+
+异步 action 可能在其 generation 结束后才恢复执行，例如在 `await` 期间发生 recycle 或最后一个 owner 的 release。此时状态写入会被忽略，但 `viewModelBinding` 与所有依赖 getter 都会抛出 `ViewModelDisposedError`。每次 `await` 之后，应先检查 `isDisposed`，再解析依赖或开始后续工作：
+
+```ts
+public async refresh(): Promise<void> {
+  const token = await this.auth.requireToken();
+  if (this.isDisposed) return;
+  await this.orders.load(token);
+}
+```
 
 不要在长生命周期 service 中保留 ViewModel 引用并假设它一直是当前实例。应保留稳定 Spec，需要时从当前 Binding 解析，尤其要跨越显式 recycle。
 

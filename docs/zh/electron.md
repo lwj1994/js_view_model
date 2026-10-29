@@ -267,9 +267,7 @@ const windowCoordinatorSpec = viewModelSpec(() => new WindowCoordinator(), {
 
 const mainRuntime = new ViewModelRuntime();
 const applicationBinding = mainRuntime.createBinding({ id: 'electron-main' });
-const windowCoordinator = applicationBinding.read(windowCoordinatorSpec);
-
-await windowCoordinator.restoreWindows();
+await applicationBinding.read(windowCoordinatorSpec).restoreWindows();
 ```
 
 Runtime 是 main 的应用级 DI 边界。多个 main-process Binding 可以通过它共享 keyed module，而 unkeyed module 仍对各 Binding 私有。
@@ -279,11 +277,14 @@ Runtime 是 main 的应用级 DI 边界。多个 main-process Binding 可以通�
 ```ts
 const trayBinding = mainRuntime.createBinding({
   id: 'tray-owner',
-  onUpdate: () => refreshTrayMenu(),
+  // Request a refresh; rebuild the menu from the final state when it runs.
+  onUpdate: () => scheduleTrayMenuRefresh(),
 });
 
 const trayModel = trayBinding.watch(traySpec);
 ```
+
+`onUpdate` 在一次同步更新的第一个 watched 事件时执行，因此应调度菜单重建（例如使用 `setImmediate`），而不是同步读取状态。Binding 应与其 callback 捕获的 tray 或 window 一起 dispose。
 
 不要从瞬时代码反复调用 `watch(spec, listener)`；直接传给 plain `watch` 的 subscription 会一直注册到当前 generation 或 Binding dispose。direct ViewModel subscription 应保存 unsubscribe function，并注册显式 cleanup。
 

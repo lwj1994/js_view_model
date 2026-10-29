@@ -45,6 +45,17 @@ export default defineConfig([
   },
   {
     ...shared,
+    // Lint rules load in the ESLint process and never import the runtime core.
+    entry: { 'eslint/index': 'src/eslint/index.ts' },
+    format: ['esm', 'cjs'],
+    dts: false,
+    external: ['eslint', 'typescript'],
+    outExtension({ format }) {
+      return { js: format === 'cjs' ? '.cjs' : '.js' };
+    },
+  },
+  {
+    ...shared,
     entry: platformEntries,
     format: ['esm'],
     dts: false,

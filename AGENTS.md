@@ -11,8 +11,10 @@
 - `src/electron/`：Electron renderer Scope 与窗口生命周期适配。
 - `src/vue/`：可选 Vue 3 响应式与组件 owner 桥接。
 - `src/taro-vue/`：可选 Taro 4 页面与应用生命周期适配。
+- `src/eslint/`：可选类型感知 ESLint 插件（`@lwjlol/view_model/eslint`），对齐 Flutter
+  `view_model_lint` 规则。
 - `scripts/`：构建后 package exports 与 ESM/CJS 身份冒烟验证。
-- `tests/`：核心、React 与平台测试。
+- `tests/`：核心、React、平台与 ESLint 规则测试。
 
 ## 工作规则
 
@@ -32,6 +34,12 @@
 - update 在同步/异步成功后自动通知；listenState/listenStateSelect 使用 (previous, current)；没有 onDependencyNotify。
 - 异步 override 使用传入的隔离 Runtime，不模拟跨平台隐式 Dart Zone；手动 override 务必 finally 恢复。
 - Taro 页面默认仅在卸载时释放 Binding；页面显隐暂停只能用于独立 Runtime。
+- plain Binding 的 `onUpdate` 是同步 transaction 首个 watched 事件时的刷新请求；文档与示例必须延后读取，
+  不得在 `onUpdate` 内同步渲染。异步 action 在 `await` 之后先检查 `isDisposed` 再解析依赖。
+- `src/eslint/` 运行时只依赖 `typescript`，不得导入 core 或 `@typescript-eslint/utils`；规则基于 TS AST
+  与 checker，按声明成员的类名识别框架类型，以同时兼容源码与发布的 `.d.ts`。
+- 修改 lint 规则时同步 `docs/lint.md` 与 `docs/zh/lint.md`；`tests/eslint/docs.test.ts` 校验每个正反示例。
+  插件 `meta.version` 必须与 `package.json` 一致，发版时一起更新。
 - 用户文档提供结构镜像的英文与中文版本；代码注释使用英文。
 
 ## 验证

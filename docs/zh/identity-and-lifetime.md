@@ -283,7 +283,7 @@ runtime.recycle(spec); // Every generation matching this Spec identity and effec
 Recycle 不会把旧 object 修改成新 object。旧引用会永久 disposed。
 
 - 已 mounted React hook 收到通知并解析新 generation。
-- plain Binding 的 `onUpdate` callback 收到通知，并应从 Spec 重新解析。
+- plain Binding 的 `onUpdate` callback 收到通知，并应调度一次从 Spec 重新解析的刷新。
 - parent dependency getter 下次访问时解析新 child generation。
 - 长期缓存实例保持过期状态，不能继续使用。
 

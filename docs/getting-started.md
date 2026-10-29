@@ -103,9 +103,20 @@ function renderHost(): void {
   console.log(`count: ${counter.state.count}`);
 }
 
+// onUpdate requests a refresh; render once the synchronous update has finished.
+let renderScheduled = false;
+function scheduleRender(): void {
+  if (renderScheduled) return;
+  renderScheduled = true;
+  queueMicrotask(() => {
+    renderScheduled = false;
+    if (!binding.isDisposed) renderHost();
+  });
+}
+
 const binding = runtime.createBinding({
   id: 'application-host',
-  onUpdate: renderHost,
+  onUpdate: scheduleRender,
 });
 
 renderHost();
@@ -122,6 +133,8 @@ The two resolution modes have different notification behavior:
 - `binding.watch(spec)` resolves and retains the instance and routes its ordinary notifications to the Binding's `onUpdate` callback.
 
 Both modes participate in ownership and lifetime. `read` does not mean “temporary” or “unmanaged.”
+
+`onUpdate` is a refresh request, not a render callback. It runs at the first watched event of a synchronous update and is not called again for later events in that update, so the example schedules `renderHost` instead of reading state inside `onUpdate`. A synchronous read there can render an intermediate state when one change triggers others.
 
 The example calls `binding.watch(counterSpec)` again from `renderHost`. That call is idempotent for the current identity, and it lets the host resolve a new generation after an explicit recycle.
 
@@ -151,7 +164,10 @@ export const applicationBinding = applicationRuntime.createBinding({
   id: 'application',
 });
 
-export const session = applicationBinding.read(sessionSpec);
+// Resolve through the owner on every access instead of exporting the instance.
+export function currentSession(): SessionViewModel {
+  return applicationBinding.read(sessionSpec);
+}
 ```
 
 As long as `applicationBinding` remains alive, it owns the session. `aliveForever` is not required merely because a binding has application lifetime.

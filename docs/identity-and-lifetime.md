@@ -283,7 +283,7 @@ For a keyed Spec, recycle affects the shared generation used by every Scope, pla
 Recycle does not mutate an old object into a new one. The old reference becomes permanently disposed.
 
 - Mounted React hooks are notified and resolve a new generation.
-- A plain Binding's `onUpdate` callback is notified and should resolve from the Spec again.
+- A plain Binding's `onUpdate` callback is notified and should schedule a refresh that resolves from the Spec again.
 - A parent dependency getter resolves the new child generation on its next access.
 - A long-lived cached instance remains stale and must not be used.
 
