@@ -420,11 +420,12 @@ export default [
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
   },
-  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+  viewModel.configs.recommended,
 ];
 ```
 
-Run `npx eslint . --max-warnings 0` locally and in CI, and `npx eslint . --fix` to
+The recommended config covers `.ts`, `.tsx`, `.mts`, and `.cts` files. Run
+`npx eslint . --max-warnings 0` locally and in CI, and `npx eslint . --fix` to
 apply the available fixes. `view-model/cached-lookup` is an opt-in rule. Prefer a
 local `eslint-disable-next-line` with a reason for an intentional exception.
 Type-cycle warnings do not prove an instance cycle and do not replace runtime

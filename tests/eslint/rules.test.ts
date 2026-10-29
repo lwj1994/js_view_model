@@ -5,7 +5,7 @@ import { Linter } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 import plugin from '../../src/eslint/index.js';
-import { fix, lint, reported } from './lint.js';
+import { fix, lint, reported, suggest } from './lint.js';
 
 const core = `import { StateViewModel, ViewModel, ViewModelRuntime, ViewModelSpec, viewModelSpec } from '../../../src/core/index.js';
 import { CounterViewModel, UserViewModel, counterSpec } from './shared.js';
@@ -36,6 +36,7 @@ describe('plugin', () => {
       'view-model/temporary-spec': 'warn',
     });
     expect(plugin.configs.recommended.plugins?.['view-model']).toBe(plugin);
+    expect(plugin.configs.recommended.files).toEqual(['**/*.{ts,tsx,mts,cts}']);
     expect(Object.keys(plugin.rules)).toContain('cached-lookup');
   });
 
@@ -476,7 +477,7 @@ export function Plain() {
     ]);
   });
 
-  it('resolves it with useReadViewModel', () => {
+  it('suggests useReadViewModel instead of fixing automatically', () => {
     const imports = `import { useEffect, useRef } from 'react';
 import {
   useReadViewModel,
@@ -487,13 +488,42 @@ import {
 import {
   useViewModel,`,
     );
-    expect(fix('selector-with-watch', missing, { extension: 'tsx' })).toContain(
+    // The component may render fields the selector does not pick.
+    expect(fix('selector-with-watch', code, { extension: 'tsx' })).toBe(code);
+    expect(suggest('selector-with-watch', missing, { extension: 'tsx' })).toContain(
       `  useViewModelSelector, useReadViewModel,
 } from '../../../src/react-native/index.js';`,
     );
-    expect(fix('selector-with-watch', code, { extension: 'tsx' })).toContain(
+    expect(suggest('selector-with-watch', code, { extension: 'tsx' })).toContain(
       'const counter = useReadViewModel(counterSpec);',
     );
+  });
+
+  it('reuses a read hook imported by another declaration', () => {
+    const split = code.replace(
+      `import {
+  useReadViewModel,
+  useViewModel,`,
+      `import { useReadViewModel as readHook } from '../../../src/electron/index.js';
+import {
+  useViewModel,`,
+    );
+    const output = suggest('selector-with-watch', split, { extension: 'tsx' });
+    expect(output).toContain('const counter = readHook(counterSpec);');
+    expect(output.match(/useReadViewModel/g)).toHaveLength(1);
+  });
+
+  it('does not report Vue, where reads are tracked per effect', () => {
+    const vue = `${core}
+import { computed } from 'vue';
+import { useViewModel, useViewModelSelector } from '../../../src/vue/index.js';
+export function setup() {
+  const counter = useViewModel(counterSpec);
+  const count = useViewModelSelector(counterSpec, (vm) => vm.state.count);
+  return { label: computed(() => counter.value.state.count), count };
+}
+`;
+    expect(lint('selector-with-watch', vue)).toEqual([]);
   });
 });
 
@@ -685,5 +715,159 @@ export function lookup(runtime: ViewModelRuntime): void {
 }
 `;
     expect(lint('cached-lookup', code).map((message) => message.line)).toEqual([6, 7, 8, 9]);
+  });
+});
+
+describe('review regressions', () => {
+  it('does not run the recommended rules on JavaScript files', () => {
+    const linter = new Linter({ configType: 'flat' });
+    expect(
+      linter.verify('module.exports = {};', [plugin.configs.recommended], 'metro.config.js'),
+    ).toEqual([]);
+  });
+
+  it('gives extracted specs distinct names within one pass', () => {
+    const code = `${core}
+export function first(runtime: ViewModelRuntime): void {
+  runtime.createBinding().read(viewModelSpec(CounterViewModel, () => new CounterViewModel()));
+}
+export function second(runtime: ViewModelRuntime): void {
+  runtime.createBinding().read(viewModelSpec(CounterViewModel, () => new CounterViewModel()));
+}
+`;
+    const output = fix('temporary-spec', code);
+    expect(output).toContain('const counterViewModelSpec = viewModelSpec(');
+    expect(output).toContain('const counterViewModelSpec2 = viewModelSpec(');
+    expect(output).toContain('runtime.createBinding().read(counterViewModelSpec2);');
+  });
+
+  it('names an extracted family after its ViewModel class', () => {
+    const code = `${core}
+import * as shared from './shared.js';
+export function users(runtime: ViewModelRuntime): void {
+  runtime.createBinding().read(ViewModelSpec.arg(shared.UserViewModel, (id: string) => new shared.UserViewModel(id))('a'));
+}
+`;
+    expect(fix('temporary-spec', code)).toContain('const userViewModelSpec = ViewModelSpec.arg(');
+  });
+
+  it('does not extract specs that read local types or enums', () => {
+    const code = `${core}
+export function local(runtime: ViewModelRuntime): void {
+  enum Mode {
+    A,
+  }
+  type Local = CounterViewModel;
+  runtime.createBinding().read(viewModelSpec<Local>(() => new CounterViewModel()));
+  runtime.createBinding().read(viewModelSpec(() => (Mode.A === 0 ? new CounterViewModel() : new CounterViewModel())));
+}
+`;
+    expect(fix('temporary-spec', code)).toBe(code);
+  });
+
+  it('keeps static spec fixes behind later declarations and destructuring', () => {
+    const code = `${core}
+export class Host {
+  private readonly spec = viewModelSpec(LateViewModel, () => new LateViewModel());
+  private readonly other = viewModelSpec(CounterViewModel, () => new CounterViewModel());
+
+  read(runtime: ViewModelRuntime): void {
+    const { other } = this;
+    runtime.createBinding().read(this.spec);
+    runtime.createBinding().read(other);
+  }
+}
+class LateViewModel extends ViewModel {}
+`;
+    expect(fix('temporary-spec', code)).toBe(code);
+  });
+
+  it('exempts test callbacks and specs evaluated once at module level', () => {
+    const code = `${core}
+declare function describe(name: string, body: () => void): void;
+declare function it(name: string, body: () => void): void;
+export const specs = {
+  counter: viewModelSpec(CounterViewModel, () => new CounterViewModel()),
+  all: [viewModelSpec(CounterViewModel, () => new CounterViewModel(), { key: 'all' })],
+};
+export default viewModelSpec(CounterViewModel, () => new CounterViewModel(), { key: 'default' });
+describe('counter', () => {
+  it('reads a local spec', () => {
+    const spec = viewModelSpec(CounterViewModel, () => new CounterViewModel());
+    void spec;
+  });
+});
+`;
+    expect(lint('temporary-spec', code)).toEqual([]);
+  });
+
+  it('keeps getter fixes valid on shared lines and for reassigned fields', () => {
+    const code = `${core}
+export class Holder extends ViewModel { readonly counter = this.viewModelBinding.read(counterSpec); }
+export class Reassigned extends ViewModel {
+  readonly counter = this.viewModelBinding.read(counterSpec);
+  private second = this.viewModelBinding.read(counterSpec);
+
+  constructor(replacement: CounterViewModel) {
+    super();
+    this.counter = replacement;
+    [this.second] = [replacement];
+  }
+}
+`;
+    expect(fix('cached-instance', code)).toBe(
+      code.replace(
+        'readonly counter = this.viewModelBinding.read(counterSpec); }',
+        'get counter() { return this.viewModelBinding.read(counterSpec); } }',
+      ),
+    );
+  });
+
+  it('adds only keys it can prove', () => {
+    const code = `${core}
+export const nullable = ViewModelSpec.arg(UserViewModel, (id: string | null) => new UserViewModel(id ?? ''), {
+  aliveForever: () => true,
+});
+export const specs = {
+  primary: viewModelSpec(UserViewModel, () => new UserViewModel('a'), { aliveForever: true }),
+};
+`;
+    expect(lint('alive-forever-key', code)).toHaveLength(2);
+    expect(fix('alive-forever-key', code)).toBe(code);
+  });
+
+  it('accepts temporary bindings of disposed or override-supplied runtimes', () => {
+    const code = `${core}
+export async function scoped(): Promise<void> {
+  const runtime = new ViewModelRuntime();
+  runtime.createBinding().read(counterSpec);
+  runtime.dispose();
+  await counterSpec.runWithOverride(counterSpec, async (scope) => {
+    scope.createBinding().read(counterSpec);
+  });
+}
+`;
+    expect(lint('undisposed-binding', code)).toEqual([]);
+  });
+
+  it('treats Vue setup and composable parameters as fixed per owner', () => {
+    const code = `${core}
+import { useViewModel } from '../../../src/vue/index.js';
+class ItemViewModel extends ViewModel {
+  constructor(readonly id: string) {
+    super();
+  }
+}
+const itemSpec = ViewModelSpec.arg(ItemViewModel, (id: string) => new ItemViewModel(id));
+export const component = {
+  setup(props: { id: string }) {
+    return useViewModel(itemSpec(props.id));
+  },
+};
+export function useItem(id: string) {
+  return useViewModel(itemSpec(id));
+}
+`;
+    expect(lint('identity-collision', code)).toEqual([]);
   });
 });

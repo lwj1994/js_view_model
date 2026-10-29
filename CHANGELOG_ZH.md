@@ -7,7 +7,7 @@
 - 增加 arg1-4 family、可恢复 override、隔离 Runtime 异步覆盖、全局配置/观察者/错误报告、状态历史、unbind、局部界面暂停和调试快照。
 - 提交精确 owner/edge 后再运行回调，修复重入 rollback、过期 release、批量缓存原子性、错误 key 命中回退与跨 ESM/CJS 身份。
 - 更新中英文 API、教程、skill 和迁移矩阵；补充核心/React/Vue/产物回归。
-- 新增可选的类型感知 ESLint 插件 `@lwjlol/view_model/eslint`，对齐 Flutter `view_model_lint` 1.3.3 `0a94737`：十条默认警告、可选的 `cached-lookup` 规则，以及可由 `eslint --fix` 应用的 `cached-instance`、`alive-forever-key`、`selector-with-watch`、`temporary-spec` 修复。规则需要 typescript-eslint 类型信息；`eslint`、`typescript` 与 `@typescript-eslint/parser` 为可选 peer，该入口不会加载 runtime。新增中英文规则指南，正反示例均由测试校验。
+- 新增可选的类型感知 ESLint 插件 `@lwjlol/view_model/eslint`，对齐 Flutter `view_model_lint` 1.3.3 `0a94737`：十条默认警告、可选的 `cached-lookup` 规则，可由 `eslint --fix` 应用的 `cached-instance`、`alive-forever-key`、`temporary-spec` 修复，以及仅检查 React 的 `selector-with-watch` 的 IDE 建议。推荐配置覆盖 TypeScript 文件。规则需要 typescript-eslint 类型信息；`eslint`、`typescript` 与 `@typescript-eslint/parser` 为可选 peer，该入口不会加载 runtime。新增中英文规则指南，正反示例均由测试校验。
 - 记录 Android 0.10.0 与 Apple 0.13.0 背后的宿主契约，runtime 不变：plain Binding 的 `onUpdate` 是同步 transaction 第一个 watched 事件时的刷新请求，宿主应延后读取，并让 Binding 与其捕获的宿主一起 dispose；异步 action 每次 `await` 后先检查 `isDisposed` 再解析依赖。快速开始与 Electron 示例改为延后渲染，示例不再把已解析的 ViewModel 存进模块变量。
 - 修复开发依赖审计：Vitest 4.1.12，以及兼容的 brace-expansion、source-map-js 锁文件更新。
 - 不新增 Flutter 生成器/DevTools/Widget API，也不新增 React Web/SSR 入口；异步覆盖明确使用传入 Runtime。

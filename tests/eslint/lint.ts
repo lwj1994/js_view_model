@@ -85,3 +85,16 @@ export function fix(rule: ViewModelLintRule, code: string, options: LintOptions 
   const linter = new Linter({ configType: 'flat' });
   return linter.verifyAndFix(code, config([rule]), target(options)).output;
 }
+
+/** The code after applying the first suggestion of every diagnostic, one at a time. */
+export function suggest(rule: ViewModelLintRule, code: string, options: LintOptions = {}): string {
+  const messages = lint(rule, code, options);
+  const fixes = messages.flatMap((message) => message.suggestions?.[0]?.fix ?? []);
+  return fixes
+    .sort((left, right) => right.range[0] - left.range[0])
+    .reduce(
+      (text, fixToApply) =>
+        text.slice(0, fixToApply.range[0]) + fixToApply.text + text.slice(fixToApply.range[1]),
+      code,
+    );
+}

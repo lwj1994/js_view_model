@@ -1,13 +1,14 @@
 import type { Rule } from 'eslint';
 import ts from 'typescript';
 
-import { analyze, type RuleKind } from './analysis.js';
+import { analyze, type Edit, type RuleKind } from './analysis.js';
 
 interface RuleDefinition {
   readonly type: 'problem' | 'suggestion';
   readonly description: string;
   readonly recommended: boolean;
   readonly fixable?: true;
+  readonly hasSuggestions?: true;
   readonly messages: Readonly<Record<string, string>>;
 }
 
@@ -84,10 +85,11 @@ export const RULE_DEFINITIONS: Readonly<Record<RuleKind, RuleDefinition>> = {
     type: 'suggestion',
     description: 'Report useViewModel next to a selector for the same spec.',
     recommended: true,
-    fixable: true,
+    hasSuggestions: true,
     messages: {
       default:
         'useViewModel updates on every notification and defeats useViewModelSelector for the same spec. Resolve it with useReadViewModel and let the selector drive updates.',
+      useRead: 'Resolve the ViewModel with useReadViewModel.',
     },
   },
   'undisposed-binding': {
@@ -158,6 +160,7 @@ export function createRule(kind: RuleKind): Rule.RuleModule {
         url: `${DOCS}#${kind}`,
       },
       ...(definition.fixable ? { fixable: 'code' as const } : {}),
+      ...(definition.hasSuggestions ? { hasSuggestions: true } : {}),
       messages: { ...definition.messages },
       schema: [],
     },
@@ -178,16 +181,26 @@ export function createRule(kind: RuleKind): Rule.RuleModule {
             // Hosts such as Vue SFCs embed the script; shift edits into the full text.
             const delta = node === undefined ? 0 : node.range[0] - start;
             const edits = finding.fix;
+            const suggestion = finding.suggestion;
+            const shift = (fixer: Rule.RuleFixer, list: readonly Edit[]) =>
+              list.map((edit) =>
+                fixer.replaceTextRange([edit.start + delta, edit.end + delta], edit.text),
+              );
             const descriptor = {
               messageId: finding.messageId,
               ...(finding.data === undefined ? {} : { data: finding.data }),
               ...(edits === undefined
                 ? {}
+                : { fix: (fixer: Rule.RuleFixer) => shift(fixer, edits) }),
+              ...(suggestion === undefined
+                ? {}
                 : {
-                    fix: (fixer: Rule.RuleFixer) =>
-                      edits.map((edit) =>
-                        fixer.replaceTextRange([edit.start + delta, edit.end + delta], edit.text),
-                      ),
+                    suggest: [
+                      {
+                        messageId: suggestion.messageId,
+                        fix: (fixer: Rule.RuleFixer) => shift(fixer, suggestion.edits),
+                      },
+                    ],
                   }),
             };
             if (node !== undefined) {

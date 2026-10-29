@@ -29,11 +29,13 @@ export default [
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
   },
-  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+  viewModel.configs.recommended,
 ];
 ```
 
-CommonJS 配置使用 `require('@lwjlol/view_model/eslint')`，返回同一个插件。需要
+推荐配置作用于 `**/*.{ts,tsx,mts,cts}`。要检查其他带类型信息的文件（例如 Vue 单文件
+组件），用自己的 `files` 展开它。CommonJS 配置使用
+`require('@lwjlol/view_model/eslint')`，返回同一个插件。需要
 ESLint 9 及以上、`@typescript-eslint/parser` 8 及以上、TypeScript 5 及以上。在没有
 类型信息的文件上运行时，每条规则都会抛出带配置提示的错误。
 
@@ -56,14 +58,15 @@ npx eslint . --max-warnings 0
 | [`listen-in-render`](#listen-in-render)             | warn |      | 每次 render 或 getter 访问都注册一次监听      |
 | [`instance-handoff`](#instance-handoff)             | warn |      | 通过构造函数或 props 传递 ViewModel           |
 | [`identity-collision`](#identity-collision)         | warn |      | 不带 key 的多次解析共享同一个实例             |
-| [`selector-with-watch`](#selector-with-watch)       | warn | ✓    | 同一 Spec 同时使用 `useViewModel` 与 selector |
+| [`selector-with-watch`](#selector-with-watch)       | warn | IDE  | 同一 Spec 同时使用 `useViewModel` 与 selector |
 | [`undisposed-binding`](#undisposed-binding)         | warn |      | 创建的 Binding 或 Runtime 从未 dispose        |
 | [`temporary-spec`](#temporary-spec)                 | warn | ✓    | Spec 不是模块级或 static 变量                 |
 | [`cached-lookup`](#cached-lookup)                   | off  |      | 用缓存查询代替 Spec                           |
 
-所有规则 ID 都带 `view-model/` 前缀。修复会作为 IDE 快速修复出现，
+所有规则 ID 都带 `view-model/` 前缀。标记 ✓ 的修复会作为 IDE 快速修复出现，
 `npx eslint . --fix` 会批量应用。每个修复只改动能确定安全的内容；没有安全改法的
-诊断不提供修复。
+诊断不提供修复。`selector-with-watch` 只提供 IDE 建议，因为组件是否仍需要每次
+更新应由作者决定。
 
 ## 共享声明
 
@@ -165,8 +168,8 @@ const cartSpec = viewModelSpec(CartViewModel, () => new CartViewModel());
 赋给某个属性（例如 React ref）。`recycle` 或 dispose 之后，它仍指向已经销毁的旧
 generation。
 
-修复：`readonly` 字段，或从未被重新赋值的 private 字段，改为 getter。模块级变量没有
-自动修复。
+修复：从未被重新赋值的 `readonly` 或 private 字段改为 getter。模块级变量没有自动
+修复。在测试中，请通过 getter 或辅助函数获取实例，不要用 `beforeEach` 赋值的 `let`。
 
 **错误示例**
 
@@ -208,8 +211,9 @@ export function appCounter(): CounterViewModel {
 `aliveForever: true` 会在最后一个 owner 离开后继续保留实例。没有 key 就再也找不到
 这个实例，运行时也会拒绝它。
 
-修复：为 `authSpec` 加上 `key: 'auth'`，为单参数 family 加上 `key: (arg) => arg`。
-多参数 family 的组合 key 需要由应用决定，因此不提供自动修复。
+修复：按 Spec 变量名为 `authSpec` 加上 `key: 'auth'`；参数始终是合法 key 的单参数
+family 加上 `key: (arg) => arg`。没有变量名的 Spec，以及多参数或参数可为空的
+family，需要由应用决定 key，因此不提供自动修复。
 
 **错误示例**
 
@@ -437,17 +441,21 @@ export function Dashboard() {
 ```
 
 一个 Binding 指 ViewModel 自身的 `viewModelBinding`、同一个组件中的 hook，或持有
-Binding 的同一个变量或字段。在循环、回调或方法参数中变化的参数，会与自身冲突。组件
-props 与 Flutter `build` 的 context 一样视为在同一 owner 内固定，因此来自 props 的
-`useViewModel(userSpec(userId))` 不会被报告；但如果该 prop 之后改变，不带 key 的
-family 仍会保留第一个实例。仅传 builder 的 Spec 拥有私有身份，永远不会冲突。
+Binding 的同一个变量或字段。在循环、回调或方法参数中变化的参数，会与自身冲突。组件、
+hook、Vue `setup` 与 composable 的参数与 Flutter `build` 的 context 一样处理，不会被
+报告，因此来自 props 的 `useViewModel(userSpec(userId))` 可以通过。但同一个
+`ViewModelScope` 下的所有组件共享它的 Binding：兄弟组件用不同 props 解析不带 key 的
+family，或者某个组件的 prop 发生变化，拿到的仍是第一个实例。需要不同实例时请给
+family 加 key。仅传 builder 的 Spec 拥有私有身份，永远不会冲突。
 
 ## `selector-with-watch`
 
-`useViewModelSelector` 只在选中的值变化时更新。如果同一个组件还用 `useViewModel`
-解析同一个 Spec，每次通知都会让组件更新，selector 也就失去了作用。
+`useViewModelSelector` 只在选中的值变化时更新。如果同一个 React 组件还用
+`useViewModel` 解析同一个 Spec，每次通知都会让组件重新渲染，selector 也就失去了
+作用。Vue 按 effect 追踪读取，因此不会报告 Vue 文件。
 
-修复：把 `useViewModel` 改为 `useReadViewModel`，需要时自动补上导入。
+建议：把 `useViewModel` 改为 `useReadViewModel`，需要时自动补上导入。只有当组件除
+selector 之外不渲染 ViewModel 的任何内容时才应用它。
 
 **错误示例**
 
@@ -516,20 +524,23 @@ beforeEach(() => {
 afterEach(() => testRuntime.dispose());
 ```
 
-模块级声明或 static 字段是应用生命周期的 owner，不会被报告。dispose Runtime 会同时
-dispose 它创建的 Binding，`runWithOverride` 提供的 Runtime 也会被自动 dispose。传给
+模块级声明或 static 字段是应用生命周期的 owner，不会被报告。在同一文件中可见的
+Runtime dispose 会同时 dispose 它创建的 Binding，`runWithOverride` 提供的 Runtime 也会被自动 dispose。传给
 其他调用、作为返回值或存到其他对象上的 Binding，视为已经交给新的 owner。如果由
 `close()` 之类的包装方法负责 dispose，请带上原因抑制该警告。
 
 ## `temporary-spec`
 
-Spec 只应创建一次：在模块级变量或 static 字段的初始化表达式中。局部变量、实例字段、
-函数返回值或调用处内联的 Spec，每次求值都会重新创建。在 React 中，内联 Spec 每次
-render 都是新对象；仅传 builder 的 Spec 甚至每次都是新的身份。override 也无法再
-替换它。
+Spec 只应创建一次：在模块求值期间（例如模块级变量、对象、数组或默认导出），或在
+static 初始化中。局部变量、实例字段、函数返回值或调用处内联的 Spec，每次求值都会
+重新创建。在 React 中，内联 Spec 每次 render 都是新对象；仅传 builder 的 Spec 甚至
+每次都是新的身份。override 也无法再替换它。在 `describe`、`it`、`test`、
+`beforeEach` 等测试回调中创建的 Spec 不会被报告，与[测试指南](./testing.md)中按测试
+声明 Spec 的建议一致。
 
-修复：private 实例字段改为 `static`，`this.spec` 改为 `ClassName.spec`；不捕获任何
-作用域变量的 Spec 移到其所在语句之前的模块级 `const`。
+修复：当所有使用都是 `this.spec` 访问、且 Spec 读取的内容都在类之前声明时，private
+实例字段改为 `static`，`this.spec` 改为 `ClassName.spec`；不捕获任何作用域变量的
+Spec 移到其所在语句之前的模块级 `const`。
 
 **错误示例**
 
@@ -625,19 +636,19 @@ export function sharedCounter(binding: ViewModelBinding): CounterViewModel {
 
 ## 与 Flutter 的对应关系
 
-| ESLint 规则                         | Flutter `view_model_lint`           | JavaScript 差异                                                   |
-| ----------------------------------- | ----------------------------------- | ----------------------------------------------------------------- |
-| `view-model/dependency-cycle`       | `view_model_dependency_cycle`       | 也跟踪自身 Binding 的 `listen*`，它同样会解析并持有 child         |
-| `view-model/cached-instance`        | `view_model_cached_instance`        | 包含解析类 hook，以及 React ref 等被赋值的属性                    |
-| `view-model/alive-forever-key`      | `view_model_alive_forever_key`      | 单参数 family 的修复保持 Map 身份语义：`(arg) => arg`             |
-| `view-model/unmanaged-construction` | `view_model_unmanaged_construction` | builder 是直接传给 Spec 构造的内联函数                            |
-| `view-model/listen-in-render`       | `view_model_listen_in_build`        | render 指函数组件、React hook 与 class 的 `render`                |
-| `view-model/instance-handoff`       | `view_model_instance_handoff`       | 也检查组件 props 与 Vue `defineProps<T>()`                        |
-| `view-model/identity-collision`     | `view_model_identity_collision`     | 仅传 builder 的 Spec 永远不会冲突                                 |
-| `view-model/selector-with-watch`    | `view_model_selector_with_watch`    | 同一组件对同一 Spec 使用 `useViewModel` 与 `useViewModelSelector` |
-| `view-model/undisposed-binding`     | `view_model_undisposed_binding`     | 也检查 `ViewModelRuntime`；dispose Runtime 会覆盖其 Binding       |
-| `view-model/temporary-spec`         | `view_model_temporary_spec`         | static 修复会改写 `this.spec`；提取修复不会把代码移到使用处之后   |
-| `view-model/cached-lookup`          | `view_model_cached_lookup`          | 也检查 Runtime 上的缓存查询                                       |
+| ESLint 规则                         | Flutter `view_model_lint`           | JavaScript 差异                                             |
+| ----------------------------------- | ----------------------------------- | ----------------------------------------------------------- |
+| `view-model/dependency-cycle`       | `view_model_dependency_cycle`       | 也跟踪自身 Binding 的 `listen*`，它同样会解析并持有 child   |
+| `view-model/cached-instance`        | `view_model_cached_instance`        | 包含解析类 hook，以及 React ref 等被赋值的属性              |
+| `view-model/alive-forever-key`      | `view_model_alive_forever_key`      | 仅为有变量名的 Spec 或 key 类型的单参数提供修复             |
+| `view-model/unmanaged-construction` | `view_model_unmanaged_construction` | builder 是直接传给 Spec 构造的内联函数                      |
+| `view-model/listen-in-render`       | `view_model_listen_in_build`        | render 指函数组件、React hook 与 class 的 `render`          |
+| `view-model/instance-handoff`       | `view_model_instance_handoff`       | 也检查组件 props 与 Vue `defineProps<T>()`                  |
+| `view-model/identity-collision`     | `view_model_identity_collision`     | 仅传 builder 的 Spec 永远不会冲突；Vue `setup` 视同 `build` |
+| `view-model/selector-with-watch`    | `view_model_selector_with_watch`    | 仅检查 React hook；改写是 IDE 建议，不由 `--fix` 应用       |
+| `view-model/undisposed-binding`     | `view_model_undisposed_binding`     | 也检查 `ViewModelRuntime`；dispose Runtime 会覆盖其 Binding |
+| `view-model/temporary-spec`         | `view_model_temporary_spec`         | 模块求值与测试回调视为只创建一次                            |
+| `view-model/cached-lookup`          | `view_model_cached_lookup`          | 也检查 Runtime 上的缓存查询                                 |
 
 Flutter 需要单独的 `view_model_lint:fix` 命令，因为 `dart fix` 不能应用插件修复；
-ESLint 通过 `--fix` 应用这些修复。
+ESLint 通过 `--fix` 应用三个自动修复。

@@ -333,11 +333,11 @@ export default [
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
   },
-  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+  viewModel.configs.recommended,
 ];
 ```
 
-本地与 CI 都运行 `npx eslint . --max-warnings 0`，用 `npx eslint . --fix` 应用可用的
+推荐配置覆盖 `.ts`、`.tsx`、`.mts` 与 `.cts` 文件。本地与 CI 都运行 `npx eslint . --max-warnings 0`，用 `npx eslint . --fix` 应用可用的
 修复。`view-model/cached-lookup` 需要手动开启。有意为之的例外请使用带原因的局部
 `eslint-disable-next-line`。类型层面的依赖环警告不能证明实例层面存在环，也不能替代
 运行时校验。每条规则的正反示例见 [规则指南](./docs/zh/lint.md)。

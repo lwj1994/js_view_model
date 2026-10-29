@@ -32,12 +32,14 @@ export default [
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
   },
-  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+  viewModel.configs.recommended,
 ];
 ```
 
-A CommonJS config uses `require('@lwjlol/view_model/eslint')`, which returns the
-same plugin. ESLint 9 or newer, `@typescript-eslint/parser` 8 or newer, and
+The recommended config applies to `**/*.{ts,tsx,mts,cts}`. To lint other files
+that have type information, such as Vue single-file components, spread it with
+your own `files`. A CommonJS config uses `require('@lwjlol/view_model/eslint')`,
+which returns the same plugin. ESLint 9 or newer, `@typescript-eslint/parser` 8 or newer, and
 TypeScript 5 or newer are required. A file linted without type information makes
 every rule throw with a configuration hint.
 
@@ -60,14 +62,16 @@ Ten rules are enabled as warnings. `view-model/cached-lookup` is opt-in.
 | [`listen-in-render`](#listen-in-render)             | warn    |     | A listener registered on every render or getter access  |
 | [`instance-handoff`](#instance-handoff)             | warn    |     | A ViewModel passed through a constructor or props       |
 | [`identity-collision`](#identity-collision)         | warn    |     | Unkeyed resolutions that share one instance             |
-| [`selector-with-watch`](#selector-with-watch)       | warn    | ✓   | `useViewModel` next to a selector for the same spec     |
+| [`selector-with-watch`](#selector-with-watch)       | warn    | IDE | `useViewModel` next to a selector for the same spec     |
 | [`undisposed-binding`](#undisposed-binding)         | warn    |     | A created Binding or Runtime that is never disposed     |
 | [`temporary-spec`](#temporary-spec)                 | warn    | ✓   | A spec that is not a module-level or static variable    |
 | [`cached-lookup`](#cached-lookup)                   | off     |     | A cached query used instead of a spec                   |
 
-Every rule ID is prefixed with `view-model/`. Fixes appear as IDE quick fixes and
-are applied in bulk by `npx eslint . --fix`. Each fix edits only what it can prove;
-a diagnostic without a safe edit has no fix.
+Every rule ID is prefixed with `view-model/`. Fixes marked ✓ appear as IDE quick
+fixes and are applied in bulk by `npx eslint . --fix`. Each one edits only what it
+can prove; a diagnostic without a safe edit has no fix. `selector-with-watch`
+offers an IDE suggestion only, because whether the component still needs every
+update is the author's decision.
 
 ## Shared declarations
 
@@ -172,8 +176,9 @@ stored in a field, a module-level variable, or an assigned property such as a
 React ref. After `recycle` or disposal, it still points at the old, disposed
 generation.
 
-Fix: a `readonly` field, or a private field that is never reassigned, becomes a
-getter. A module-level variable has no automatic fix.
+Fix: a `readonly` or private field that is never reassigned becomes a getter. A
+module-level variable has no automatic fix. In tests, expose the instance through
+a getter or helper instead of a `let` assigned in `beforeEach`.
 
 **Bad**
 
@@ -215,9 +220,10 @@ export function appCounter(): CounterViewModel {
 `aliveForever: true` keeps an instance after its last owner leaves. Without a
 key, nothing can find that instance again, and the runtime rejects it.
 
-Fix: adds `key: 'auth'` for `authSpec`, or `key: (arg) => arg` for a
-single-argument family. A family with several arguments needs a composite key
-chosen by the application, so it has no automatic fix.
+Fix: adds `key: 'auth'` for `authSpec`, named after the spec variable, or
+`key: (arg) => arg` for a single-argument family whose argument is always a valid
+key. A spec with no variable name, or a family with several or nullable
+arguments, needs a key chosen by the application, so it has no automatic fix.
 
 **Bad**
 
@@ -453,19 +459,25 @@ export function Dashboard() {
 
 A Binding is a ViewModel's own `viewModelBinding`, the hooks of one component,
 or one variable or field holding a Binding. Arguments that vary inside a loop, a
-callback, or a method parameter collide with themselves. Component props are
-fixed per owner, as Flutter's `build` context is, so `useViewModel(userSpec(userId))`
-from props is not reported; an unkeyed family still keeps its first instance when
-that prop later changes. Builder-only specs have a private identity and never
+callback, or a method parameter collide with themselves. Parameters of a
+component, hook, Vue `setup`, or composable are treated like Flutter's `build`
+context and are not reported, so `useViewModel(userSpec(userId))` from props
+passes. Every component under one `ViewModelScope` shares its Binding, though, so
+siblings that resolve an unkeyed family with different props, or one component
+whose prop changes, still get the first instance. Give the family a key when
+instances must differ. Builder-only specs have a private identity and never
 collide.
 
 ## `selector-with-watch`
 
 `useViewModelSelector` updates only when the selected value changes. If the same
-component also resolves that spec with `useViewModel`, every notification
-updates the component anyway, which defeats the selector.
+React component also resolves that spec with `useViewModel`, every notification
+rerenders the component anyway, which defeats the selector. Vue tracks reads per
+effect, so Vue files are not reported.
 
-Fix: `useViewModel` becomes `useReadViewModel`, which is imported when needed.
+Suggestion: `useViewModel` becomes `useReadViewModel`, which is imported when
+needed. Apply it only when the component renders nothing from the ViewModel
+except through selectors.
 
 **Bad**
 
@@ -536,23 +548,28 @@ afterEach(() => testRuntime.dispose());
 ```
 
 A module-level declaration or a static field is an application-lifetime owner
-and is not reported. Disposing a Runtime disposes the Bindings it created, and
-the Runtime that `runWithOverride` supplies is disposed for you. A Binding passed
+and is not reported. Disposing a Runtime, when that call is visible in the same
+file, disposes the Bindings it created, and the Runtime that `runWithOverride`
+supplies is disposed for you. A Binding passed
 to another call, returned, or stored on another object counts as handed over.
 If a wrapper method such as `close()` disposes it, suppress the warning with a
 reason.
 
 ## `temporary-spec`
 
-A spec must be created once: in the initializer of a module-level variable or a
-static field. A spec in a local variable, an instance field, a function result,
-or inline at a call is rebuilt on every evaluation. In React, an inline spec is
-a new object on every render; a builder-only one is even a new identity. An
-override can no longer replace it either.
+A spec must be created once: during module evaluation, as in a module-level
+variable, object, array, or default export, or in a static initializer. A spec in
+a local variable, an instance field, a function result, or inline at a call is
+rebuilt on every evaluation. In React, an inline spec is a new object on every
+render; a builder-only one is even a new identity. An override can no longer
+replace it either. Specs created inside test callbacks such as `describe`, `it`,
+`test`, or `beforeEach` are not reported, matching the
+[testing guide](./testing.md)'s per-test Specs.
 
 Fixes: a private instance field becomes `static` and `this.spec` becomes
-`ClassName.spec`; a spec that captures nothing from its scope moves to a
-module-level `const` declared before its statement.
+`ClassName.spec`, when every use is such an access and everything the spec reads
+is declared before the class; a spec that captures nothing from its scope moves to
+a module-level `const` declared before its statement.
 
 **Bad**
 
@@ -653,19 +670,19 @@ config.
 
 ## Flutter counterparts
 
-| ESLint rule                         | Flutter `view_model_lint`           | JavaScript difference                                                      |
-| ----------------------------------- | ----------------------------------- | -------------------------------------------------------------------------- |
-| `view-model/dependency-cycle`       | `view_model_dependency_cycle`       | Also follows own-Binding `listen*`, which resolves and owns the child      |
-| `view-model/cached-instance`        | `view_model_cached_instance`        | Includes resolving hooks and assigned properties such as React refs        |
-| `view-model/alive-forever-key`      | `view_model_alive_forever_key`      | Single-argument family fix keeps Map identity: `(arg) => arg`              |
-| `view-model/unmanaged-construction` | `view_model_unmanaged_construction` | Builders are inline functions passed to a spec construction                |
-| `view-model/listen-in-render`       | `view_model_listen_in_build`        | Render means function components, React hooks, and class `render`          |
-| `view-model/instance-handoff`       | `view_model_instance_handoff`       | Also component props and Vue `defineProps<T>()`                            |
-| `view-model/identity-collision`     | `view_model_identity_collision`     | Builder-only specs never collide                                           |
-| `view-model/selector-with-watch`    | `view_model_selector_with_watch`    | `useViewModel` and `useViewModelSelector` on one spec in one component     |
-| `view-model/undisposed-binding`     | `view_model_undisposed_binding`     | Also `ViewModelRuntime`; Runtime disposal covers its Bindings              |
-| `view-model/temporary-spec`         | `view_model_temporary_spec`         | Static fix rewrites `this.spec`; extraction never moves code past its uses |
-| `view-model/cached-lookup`          | `view_model_cached_lookup`          | Also Runtime cached queries                                                |
+| ESLint rule                         | Flutter `view_model_lint`           | JavaScript difference                                                 |
+| ----------------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| `view-model/dependency-cycle`       | `view_model_dependency_cycle`       | Also follows own-Binding `listen*`, which resolves and owns the child |
+| `view-model/cached-instance`        | `view_model_cached_instance`        | Includes resolving hooks and assigned properties such as React refs   |
+| `view-model/alive-forever-key`      | `view_model_alive_forever_key`      | Fix only for a named spec or a key-typed single argument              |
+| `view-model/unmanaged-construction` | `view_model_unmanaged_construction` | Builders are inline functions passed to a spec construction           |
+| `view-model/listen-in-render`       | `view_model_listen_in_build`        | Render means function components, React hooks, and class `render`     |
+| `view-model/instance-handoff`       | `view_model_instance_handoff`       | Also component props and Vue `defineProps<T>()`                       |
+| `view-model/identity-collision`     | `view_model_identity_collision`     | Builder-only specs never collide; Vue `setup` counts as `build`       |
+| `view-model/selector-with-watch`    | `view_model_selector_with_watch`    | React hooks only; the edit is an IDE suggestion, not `--fix`          |
+| `view-model/undisposed-binding`     | `view_model_undisposed_binding`     | Also `ViewModelRuntime`; Runtime disposal covers its Bindings         |
+| `view-model/temporary-spec`         | `view_model_temporary_spec`         | Module evaluation and test callbacks count as creating a spec once    |
+| `view-model/cached-lookup`          | `view_model_cached_lookup`          | Also Runtime cached queries                                           |
 
 Flutter needs a separate `view_model_lint:fix` command because `dart fix` cannot
-apply plugin fixes; ESLint applies these fixes with `--fix`.
+apply plugin fixes; ESLint applies the three autofixes with `--fix`.

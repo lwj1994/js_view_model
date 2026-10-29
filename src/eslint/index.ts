@@ -33,6 +33,8 @@ const plugin: ViewModelLintPlugin = {
 
 configs.recommended = {
   name: 'view-model/recommended',
+  // Type-aware rules need typescript-eslint program information.
+  files: ['**/*.{ts,tsx,mts,cts}'],
   plugins: { 'view-model': plugin },
   rules: Object.fromEntries(
     RULE_KINDS.filter((kind) => RULE_DEFINITIONS[kind].recommended).map((kind) => [

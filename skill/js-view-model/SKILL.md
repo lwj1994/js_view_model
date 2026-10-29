@@ -276,7 +276,7 @@ export default [
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
   },
-  { files: ['**/*.{ts,tsx}'], ...viewModel.configs.recommended },
+  viewModel.configs.recommended,
 ];
 ```
 
@@ -287,8 +287,8 @@ Ten warnings are enabled by default, all prefixed with `view-model/`:
 `temporary-spec`. `view-model/cached-lookup` is opt-in. The
 [rule guide](../../docs/lint.md) shows a bad and a good example for every rule;
 use it when fixing a diagnostic. `npx eslint . --fix` applies the fixes for
-`cached-instance`, `alive-forever-key`, `selector-with-watch`, and
-`temporary-spec`. Run `npx eslint . --max-warnings 0` from the package root
+`cached-instance`, `alive-forever-key`, and `temporary-spec`;
+`selector-with-watch` (React only) offers an IDE suggestion to confirm by hand. Run `npx eslint . --max-warnings 0` from the package root
 locally and in CI.
 
 Fix ownership/spec violations before disabling a rule. Unkeyed argument
@@ -298,10 +298,11 @@ with different arguments, or two unkeyed explicit-type Specs of one type.
 own-Binding `read/watch/listen*` calls in program sources; it does not prove
 key-aware instance cycles, so keep runtime validation.
 
-- Declare every Spec as a module-level or static variable. Never create one in a
-  local variable, instance field, component render, or inline at a
-  `watch/read`/hook call; `temporary-spec` reports those. Generic ViewModels use
-  a generic function that only returns the Spec.
+- Declare every Spec once: at module scope or as a static field. Never create one
+  in an instance field, component render, function result, or inline at a
+  `watch/read`/hook call; `temporary-spec` reports those. Test callbacks may keep
+  per-test Specs. Generic ViewModels use a generic function that only returns the
+  Spec.
 
 ## Flutter alignment
 

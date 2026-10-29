@@ -348,6 +348,10 @@ export function functionName(fn: ts.SignatureDeclaration): string | undefined {
     parent = child.parent;
   }
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
+  // An object member such as Vue's `setup: (props) => {}`.
+  if (ts.isPropertyAssignment(parent) && parent.initializer === child) {
+    return propertyName(parent.name);
+  }
   return undefined;
 }
 

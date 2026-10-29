@@ -116,8 +116,9 @@ install an override on that declaration (or use an argument family) when it need
 
 The usage rules are aligned to `view_model_lint` **1.3.3**, pinned to
 [`0a94737`](https://github.com/lwj1994/flutter_view_model/tree/0a94737c9e815de7c6e6cd7dd46cd158f95f5936), and ship as the optional
-`@lwjlol/view_model/eslint` plugin. All ten default warnings, the opt-in cached-lookup rule, and the
-four quick fixes are available; ESLint's `--fix` replaces Flutter's separate batch command. See
+`@lwjlol/view_model/eslint` plugin. All ten default warnings and the opt-in cached-lookup rule are
+available. Three quick fixes run under ESLint's `--fix`, which replaces Flutter's separate batch command;
+the React-only `selector-with-watch` edit is an IDE suggestion. See
 [ESLint rules](./lint.md) for the rule mapping and JavaScript differences; `tests/eslint/` verifies
 every rule and every documented example.
 

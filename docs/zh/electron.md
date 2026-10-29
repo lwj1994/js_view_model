@@ -281,7 +281,7 @@ const trayBinding = mainRuntime.createBinding({
   onUpdate: () => scheduleTrayMenuRefresh(),
 });
 
-const trayModel = trayBinding.watch(traySpec);
+trayBinding.watch(traySpec);
 ```
 
 `onUpdate` 在一次同步更新的第一个 watched 事件时执行，因此应调度菜单重建（例如使用 `setImmediate`），而不是同步读取状态。Binding 应与其 callback 捕获的 tray 或 window 一起 dispose。

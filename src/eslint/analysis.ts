@@ -53,6 +53,8 @@ export interface Finding {
   readonly data?: Record<string, string>;
   /** Edits a fix applies together, or undefined when nothing can be proved. */
   readonly fix?: readonly Edit[];
+  /** Edits offered only as an IDE suggestion, never applied by `--fix`. */
+  readonly suggestion?: { readonly messageId: string; readonly edits: readonly Edit[] };
 }
 
 /** Create-or-get resolutions whose result is a single ViewModel. */
@@ -93,6 +95,18 @@ const WATCH_HOOKS = new Set(['useViewModel']);
 const CREATE_BINDING = new Set(['createBinding']);
 const OVERRIDE_METHODS = new Set(['overrideWith', 'setProxy', 'runWithOverride']);
 const OVERRIDE_SCOPES = new Set(['runWithOverride', 'runWithOverrides']);
+/** Test framework calls whose callbacks own per-test specs and Runtimes. */
+const TEST_CALLS = new Set([
+  'describe',
+  'suite',
+  'it',
+  'test',
+  'bench',
+  'beforeEach',
+  'afterEach',
+  'beforeAll',
+  'afterAll',
+]);
 const ASSIGNMENTS = new Set([
   ts.SyntaxKind.EqualsToken,
   ts.SyntaxKind.QuestionQuestionEqualsToken,
@@ -150,6 +164,8 @@ class Analyzer {
   readonly #react: boolean;
   readonly #resolutions = new Map<object, Map<ts.Symbol, ResolutionSite[]>>();
   readonly #hooks = new Map<ts.Node, HookSite[]>();
+  /** Names introduced by fixes in this file, which ESLint may apply in one pass. */
+  readonly #introducedNames = new Set<string>();
 
   public constructor(
     private readonly model: ViewModelModel,
@@ -177,6 +193,7 @@ class Analyzer {
     messageId = 'default',
     data?: Record<string, string>,
     fix?: readonly Edit[],
+    suggestion?: Finding['suggestion'],
   ): void {
     this.#findings.push({
       kind,
@@ -184,6 +201,7 @@ class Analyzer {
       messageId,
       ...(data === undefined ? {} : { data }),
       ...(fix === undefined ? {} : { fix }),
+      ...(suggestion === undefined ? {} : { suggestion }),
     });
   }
 
@@ -240,10 +258,16 @@ class Analyzer {
     alive: Extract<OptionLookup, { state: 'present' }>,
     key: OptionLookup,
   ): readonly Edit[] | undefined {
-    // A single argument keeps the runtime's Map identity semantics; a
-    // composite key for several arguments is an application decision.
-    const value =
-      spec.arity === 0 ? `'${this.#keyName(spec)}'` : spec.arity === 1 ? '(arg) => arg' : undefined;
+    // A plain spec takes its variable's name; a single key-typed argument keeps
+    // the runtime's Map identity semantics. A composite key for several
+    // arguments, or a name nothing declares, is an application decision.
+    let value: string | undefined;
+    if (spec.arity === 0) {
+      const name = this.#keyName(spec);
+      value = name === undefined ? undefined : `'${name}'`;
+    } else if (spec.arity === 1 && this.#hasKeyArgument(spec)) {
+      value = '(arg) => arg';
+    }
     if (value === undefined) return undefined;
     if (key.state === 'present') {
       const property = key.property;
@@ -259,25 +283,46 @@ class Analyzer {
     return [{ start, end: start, text: `key: ${value}${separator}` }];
   }
 
-  #keyName(spec: SpecConstruction): string {
+  /** The spec's variable or field name without a `Spec`/`Family` suffix. */
+  #keyName(spec: SpecConstruction): string | undefined {
     const holder = outer(spec.node).parent;
     const variable =
       (ts.isVariableDeclaration(holder) || ts.isPropertyDeclaration(holder)) &&
       propertyName(holder.name);
-    if (variable) {
-      const stripped = variable.replace(/(Spec|Family)$/, '');
-      return stripped === '' ? variable : stripped;
-    }
-    const type = this.#specTypeName(spec);
-    return type === undefined ? 'viewModel' : lowerFirst(type);
+    if (!variable) return undefined;
+    const stripped = variable.replace(/(Spec|Family)$/, '');
+    return stripped === '' ? variable : stripped;
   }
 
+  /** Whether the family's single argument is always a valid, non-nullish key. */
+  #hasKeyArgument(spec: SpecConstruction): boolean {
+    const builder = spec.builder;
+    if (builder === undefined) return false;
+    const parameter = this.#checker.getSignaturesOfType(
+      this.model.typeAt(builder),
+      ts.SignatureKind.Call,
+    )[0]?.parameters[0];
+    return (
+      parameter !== undefined &&
+      isKeyType(this.#checker.getTypeOfSymbolAtLocation(parameter, builder))
+    );
+  }
+
+  /** The resolved ViewModel class name, as an identifier fragment. */
   #specTypeName(spec: SpecConstruction): string | undefined {
+    let symbol: ts.Symbol | undefined;
     if (spec.family) {
       const type = spec.node.arguments?.[0];
-      return type === undefined ? undefined : this.model.text(unwrap(type));
+      const instance =
+        type === undefined
+          ? undefined
+          : this.model.typeAt(type).getConstructSignatures()[0]?.getReturnType();
+      symbol = instance === undefined ? undefined : this.model.viewModelSymbol(instance);
+    } else {
+      symbol = this.model.specTarget(this.model.typeAt(spec.node));
     }
-    return this.model.specTarget(this.model.typeAt(spec.node))?.getName();
+    const name = symbol?.getName().replace(/[^\w$]/g, '');
+    return name === undefined || !/^[A-Za-z_$]/.test(name) ? undefined : name;
   }
 
   // view-model/temporary-spec
@@ -294,20 +339,16 @@ class Analyzer {
   }
 
   /**
-   * Whether a spec is the single program-wide declaration of that spec: a
-   * module-level variable or static field initializer. A generic function that
-   * only returns the spec stands in for a generic variable, and a replacement
-   * passed straight to an override API is reached only through the spec it overrides.
+   * Whether a spec is created once: during module evaluation or in a static
+   * initializer. A generic function that only returns the spec stands in for a
+   * generic variable, a replacement passed straight to an override API is
+   * reached only through the spec it overrides, and test callbacks own
+   * per-test specs, as the testing guide recommends.
    */
   #isStableSpec(node: ts.Node): boolean {
     const child = outer(node);
     const parent = child.parent;
-    if (ts.isVariableDeclaration(parent) && parent.initializer === child) {
-      return isModuleLevel(parent);
-    }
-    if (ts.isPropertyDeclaration(parent) && parent.initializer === child) {
-      return hasModifier(parent, ts.SyntaxKind.StaticKeyword);
-    }
+    if (evaluatedOnce(child) || isInTestCallback(child)) return true;
     if (ts.isCallExpression(parent) && parent.arguments.some((argument) => argument === child)) {
       if (OVERRIDE_METHODS.has(calleeName(parent) ?? '')) return true;
     }
@@ -335,6 +376,11 @@ class Analyzer {
     const isPrivate =
       ts.isPrivateIdentifier(field.name) || hasModifier(field, ts.SyntaxKind.PrivateKeyword);
     if (!isPrivate || this.#capturesInstance(spec.node, owner)) return undefined;
+    // A static initializer runs when the class is defined, not when it is constructed.
+    const statement = topStatement(owner);
+    if (statement === undefined || !this.#dependenciesPrecede(spec.node, statement, owner)) {
+      return undefined;
+    }
     const symbol = this.#checker.getSymbolAtLocation(field.name);
     if (symbol === undefined) return undefined;
     const anchor =
@@ -357,6 +403,11 @@ class Analyzer {
         rewritable = false;
       }
     });
+    // Destructuring such as `const { spec } = this` is not a resolved reference;
+    // every textual use must be one of the rewritten `this.spec` accesses.
+    const name = this.model.text(field.name).replace(/[$#]/g, '\\$&');
+    const uses = this.model.text(owner).match(new RegExp(`(?<![\\w$#])${name}(?![\\w$])`, 'g'));
+    if ((uses?.length ?? 0) !== edits.length) rewritable = false;
     return rewritable ? edits : undefined;
   }
 
@@ -369,7 +420,7 @@ class Analyzer {
     const statement = topStatement(spec.node);
     if (statement === undefined || !this.#dependenciesPrecede(spec.node, statement))
       return undefined;
-    const name = this.#uniqueName(`${lowerFirst(this.#specTypeName(spec) ?? 'viewModel')}Spec`);
+    const name = this.#introduceName(`${lowerFirst(this.#specTypeName(spec) ?? 'viewModel')}Spec`);
     const comments = ts.getLeadingCommentRanges(this.#file.text, statement.getFullStart());
     const anchor = comments?.[0]?.pos ?? statement.getStart(this.#file);
     const insertAt = this.#file.text.lastIndexOf('\n', anchor - 1) + 1;
@@ -446,14 +497,22 @@ class Analyzer {
     return found;
   }
 
-  /** Module-level declarations a moved spec reads must already be initialized. */
-  #dependenciesPrecede(node: ts.Node, statement: ts.Statement): boolean {
+  /**
+   * Module-level declarations a moved spec reads must already be initialized.
+   * Declarations inside `within`, such as the class whose static initializer
+   * receives the spec, are available there.
+   */
+  #dependenciesPrecede(node: ts.Node, statement: ts.Statement, within?: ts.Node): boolean {
     let precede = true;
     const visit = (current: ts.Node): void => {
       if (!precede) return;
       if (ts.isIdentifier(current) && isReference(current)) {
         const declaration = this.#checker.getSymbolAtLocation(current)?.declarations?.[0];
-        if (declaration !== undefined && declaration.getSourceFile() === this.#file) {
+        if (
+          declaration !== undefined &&
+          declaration.getSourceFile() === this.#file &&
+          (within === undefined || !contains(within, declaration))
+        ) {
           const top = topStatement(declaration);
           if (
             top !== undefined &&
@@ -472,11 +531,14 @@ class Analyzer {
     return precede;
   }
 
-  #uniqueName(base: string): string {
+  /** A name no text in this file mentions and no other fix in it introduces. */
+  #introduceName(base: string): string {
     const taken = (name: string): boolean =>
+      this.#introducedNames.has(name) ||
       new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`).test(this.#file.text);
     let name = base;
     for (let index = 2; taken(name); index += 1) name = `${base}${index}`;
+    this.#introducedNames.add(name);
     return name;
   }
 
@@ -555,8 +617,9 @@ class Analyzer {
     const isPrivate =
       ts.isPrivateIdentifier(field.name) ||
       modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword);
-    // A getter cannot be assigned; only convert fields that are never reassigned.
-    if (!readonly && !(isPrivate && !this.#isReassigned(field))) return undefined;
+    // A getter cannot be assigned. A readonly field may still be assigned in the
+    // constructor, so every field must be proved never reassigned.
+    if ((!readonly && !isPrivate) || this.#isReassigned(field)) return undefined;
     const head = [
       ...modifiers
         .filter((modifier) => modifier.kind !== ts.SyntaxKind.ReadonlyKeyword)
@@ -564,8 +627,11 @@ class Analyzer {
       'get',
     ].join(' ');
     const type = field.type === undefined ? '' : `: ${this.model.text(field.type)}`;
-    const indent = this.#textBeforeOnLine(field.getStart(this.#file));
-    const body = `{\n${indent}  return ${this.model.text(initializer)};\n${indent}}`;
+    const before = this.#textBeforeOnLine(field.getStart(this.#file));
+    const value = this.model.text(initializer);
+    // Keep a field that shares its line with other code on that line.
+    const body =
+      before.trim() === '' ? `{\n${before}  return ${value};\n${before}}` : `{ return ${value}; }`;
     return [this.#replace(field, `${head} ${this.model.text(field.name)}()${type} ${body}`)];
   }
 
@@ -574,18 +640,7 @@ class Analyzer {
     let reassigned = false;
     if (symbol === undefined) return true;
     this.#forEachReference(symbol, field.name, (reference) => {
-      const access = outer(reference.parent);
-      const parent = access.parent;
-      if (
-        (ts.isBinaryExpression(parent) &&
-          parent.left === access &&
-          parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-          parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment) ||
-        ts.isPrefixUnaryExpression(parent) ||
-        ts.isPostfixUnaryExpression(parent)
-      ) {
-        reassigned = true;
-      }
+      if (isWriteTarget(reference.parent)) reassigned = true;
     });
     return reassigned;
   }
@@ -742,6 +797,13 @@ class Analyzer {
 
   /** Whether a created owner reaches no dispose call and no other owner. */
   #isUndisposed(node: ts.CallExpression | ts.NewExpression): boolean {
+    // Runtime disposal disposes every Binding it created, temporaries included.
+    if (ts.isCallExpression(node)) {
+      const callee = unwrap(node.expression);
+      if (ts.isPropertyAccessExpression(callee) && this.#isRuntimeDisposed(callee.expression)) {
+        return false;
+      }
+    }
     const created = outer(node);
     const parent = created.parent;
     // A temporary such as `runtime.createBinding().read(spec)` cannot be
@@ -768,15 +830,7 @@ class Analyzer {
     }
     if (holder === undefined) return false;
     const usage = this.#usage(holder);
-    if (usage.disposed || usage.escaped) return false;
-    // Runtime disposal disposes every Binding it created.
-    if (ts.isCallExpression(node)) {
-      const callee = unwrap(node.expression);
-      if (ts.isPropertyAccessExpression(callee) && this.#isRuntimeDisposed(callee.expression)) {
-        return false;
-      }
-    }
-    return true;
+    return !usage.disposed && !usage.escaped;
   }
 
   #assignedHolder(target: ts.Expression): ts.Symbol | undefined {
@@ -928,8 +982,9 @@ class Analyzer {
   /**
    * Whether arguments read a variable that changes between calls on the same
    * owner: one declared in an enclosing loop or closure, or a parameter of a
-   * method or function. Render parameters are fixed per owner, as Flutter's
-   * `build` context is.
+   * method or function. Parameters of a component, hook, composable, Vue
+   * `setup`, or class `render` are fixed per owner, as Flutter's `build`
+   * context is.
    */
   #varies(argumentsList: ts.NodeArray<ts.Expression>): boolean {
     const used = new Set<ts.Symbol>();
@@ -937,7 +992,7 @@ class Analyzer {
     if (used.size === 0) return false;
     for (let node = argumentsList[0]?.parent; node !== undefined; node = node.parent) {
       if (ts.isFunctionLike(node)) {
-        if (this.#isRenderFunction(node)) return false;
+        if (this.#isRenderFunction(node) || isOwnerFunction(node)) return false;
         if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
           if (intersects(used, this.#declaredIn(node))) return true;
           continue;
@@ -1003,6 +1058,8 @@ class Analyzer {
   // view-model/selector-with-watch
 
   #collectHook(node: ts.CallExpression): void {
+    // Vue tracks reads per effect, so a watched ref does not rerender everything.
+    if (!this.#react) return;
     const selector = this.model.hookCall(node, SELECTOR_HOOKS) !== undefined;
     if (!selector && this.model.hookCall(node, WATCH_HOOKS) === undefined) return;
     const owner = enclosingFunction(node);
@@ -1031,12 +1088,16 @@ class Analyzer {
       const selected = new Set(sites.filter((site) => site.selector).map((site) => site.spec));
       for (const site of sites) {
         if (!site.selector && selected.has(site.spec)) {
+          // The component may render fields the selector does not pick, so the
+          // edit is a suggestion the author confirms rather than an autofix.
+          const edits = this.#useReadEdits(site.node);
           this.#report(
             'selector-with-watch',
             site.node,
             'default',
             undefined,
-            this.#useReadFix(site.node),
+            undefined,
+            edits === undefined ? undefined : { messageId: 'useRead', edits },
           );
         }
       }
@@ -1044,27 +1105,45 @@ class Analyzer {
   }
 
   /** `useViewModel(spec)` becomes `useReadViewModel(spec)`, importing it when needed. */
-  #useReadFix(node: ts.CallExpression): readonly Edit[] | undefined {
+  #useReadEdits(node: ts.CallExpression): readonly Edit[] | undefined {
     const callee = unwrap(node.expression);
-    if (ts.isPropertyAccessExpression(callee))
+    if (ts.isPropertyAccessExpression(callee)) {
       return [this.#replace(callee.name, 'useReadViewModel')];
+    }
     if (!ts.isIdentifier(callee)) return undefined;
-    for (const statement of this.#file.statements) {
-      if (!ts.isImportDeclaration(statement)) continue;
+    const imports = this.#file.statements.filter(ts.isImportDeclaration);
+    const named = (statement: ts.ImportDeclaration): readonly ts.ImportSpecifier[] => {
       const bindings = statement.importClause?.namedBindings;
-      if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
-      if (!bindings.elements.some((element) => element.name.text === callee.text)) continue;
-      const existing = bindings.elements.find(
+      return bindings !== undefined && ts.isNamedImports(bindings) ? bindings.elements : [];
+    };
+    for (const statement of imports) {
+      const existing = named(statement).find(
         (element) => (element.propertyName ?? element.name).text === 'useReadViewModel',
       );
       if (existing !== undefined) return [this.#replace(callee, existing.name.text)];
-      const last = bindings.elements[bindings.elements.length - 1]!;
-      return [
-        { start: last.end, end: last.end, text: ', useReadViewModel' },
-        this.#replace(callee, 'useReadViewModel'),
-      ];
     }
-    return undefined;
+    const source = imports.find((statement) =>
+      named(statement).some((element) => element.name.text === callee.text),
+    );
+    const last = source === undefined ? undefined : named(source).at(-1);
+    const module =
+      source === undefined ? undefined : this.#checker.getSymbolAtLocation(source.moduleSpecifier);
+    // Only import from a module that actually exports the read hook, and do not
+    // shadow an unrelated binding that already uses the name.
+    if (
+      last === undefined ||
+      module === undefined ||
+      !this.#checker
+        .getExportsOfModule(module)
+        .some((symbol) => symbol.getName() === 'useReadViewModel') ||
+      new RegExp('(?<![\\w$])useReadViewModel(?![\\w$])').test(this.#file.text)
+    ) {
+      return undefined;
+    }
+    return [
+      { start: last.end, end: last.end, text: ', useReadViewModel' },
+      this.#replace(callee, 'useReadViewModel'),
+    ];
   }
 
   // Shared helpers
@@ -1181,6 +1260,108 @@ function returnsOnly(fn: ts.SignatureDeclaration, node: ts.Node): boolean {
   );
 }
 
+/** Whether an expression is evaluated once: at module evaluation or in a static initializer. */
+function evaluatedOnce(node: ts.Node): boolean {
+  for (let current = node.parent; current !== undefined; current = current.parent) {
+    if (ts.isPropertyDeclaration(current)) {
+      return hasModifier(current, ts.SyntaxKind.StaticKeyword);
+    }
+    if (ts.isClassStaticBlockDeclaration(current)) return true;
+    if (ts.isFunctionLike(current)) return false;
+    if (ts.isSourceFile(current)) return true;
+  }
+  return false;
+}
+
+/** Whether `node` runs inside a callback passed to a test framework call. */
+function isInTestCallback(node: ts.Node): boolean {
+  for (let current = node.parent; current !== undefined; current = current.parent) {
+    if (!ts.isArrowFunction(current) && !ts.isFunctionExpression(current)) continue;
+    const argument = outer(current);
+    const call = argument.parent;
+    if (
+      ts.isCallExpression(call) &&
+      call.arguments.some((candidate) => candidate === argument) &&
+      TEST_CALLS.has(calleeRoot(call) ?? '')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The root identifier of `it.each(table)(...)`, `describe.skip(...)`, and similar. */
+function calleeRoot(call: ts.CallExpression): string | undefined {
+  let current = unwrap(call.expression);
+  for (;;) {
+    if (ts.isPropertyAccessExpression(current) || ts.isCallExpression(current)) {
+      current = unwrap(current.expression);
+    } else if (ts.isTaggedTemplateExpression(current)) {
+      current = unwrap(current.tag);
+    } else {
+      return ts.isIdentifier(current) ? current.text : undefined;
+    }
+  }
+}
+
+/** A function whose parameters stay fixed for one owner, as Flutter's `build` context does. */
+function isOwnerFunction(fn: ts.SignatureDeclaration): boolean {
+  const name = functionName(fn);
+  return isComponentName(name) || isHookName(name) || name === 'setup';
+}
+
+/** Whether a member access is written, including through destructuring assignment. */
+function isWriteTarget(access: ts.Node): boolean {
+  let node = outer(access);
+  while (
+    ts.isArrayLiteralExpression(node.parent) ||
+    ts.isObjectLiteralExpression(node.parent) ||
+    ts.isSpreadElement(node.parent) ||
+    ts.isSpreadAssignment(node.parent) ||
+    ts.isShorthandPropertyAssignment(node.parent) ||
+    (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node) ||
+    ts.isParenthesizedExpression(node.parent)
+  ) {
+    node = node.parent;
+  }
+  const parent = node.parent;
+  if (ts.isBinaryExpression(parent)) {
+    const operator = parent.operatorToken.kind;
+    return (
+      parent.left === node &&
+      operator >= ts.SyntaxKind.FirstAssignment &&
+      operator <= ts.SyntaxKind.LastAssignment
+    );
+  }
+  if (ts.isForOfStatement(parent) || ts.isForInStatement(parent)) {
+    return parent.initializer === node;
+  }
+  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) {
+    return (
+      parent.operator === ts.SyntaxKind.PlusPlusToken ||
+      parent.operator === ts.SyntaxKind.MinusMinusToken
+    );
+  }
+  return ts.isDeleteExpression(parent);
+}
+
+/** A primitive or object type with no nullish, unknown, or generic member. */
+function isKeyType(type: ts.Type): boolean {
+  if (type.isUnion()) return type.types.every(isKeyType);
+  return (
+    (type.flags &
+      (ts.TypeFlags.StringLike |
+        ts.TypeFlags.NumberLike |
+        ts.TypeFlags.BigIntLike |
+        ts.TypeFlags.BooleanLike |
+        ts.TypeFlags.EnumLike |
+        ts.TypeFlags.ESSymbolLike |
+        ts.TypeFlags.Object |
+        ts.TypeFlags.NonPrimitive)) !==
+    0
+  );
+}
+
 function isTopLevel(node: ts.Node): boolean {
   return ts.isSourceFile(node.parent) || ts.isModuleBlock(node.parent);
 }
@@ -1202,15 +1383,33 @@ function isPlainField(field: ts.PropertyDeclaration): boolean {
   );
 }
 
-/** A declaration that lives inside a function, block, or class rather than the module. */
+/**
+ * A declaration that lives inside a function, block, class, or namespace
+ * rather than directly in the module, including local types and enums.
+ */
 function isScopedDeclaration(declaration: ts.Declaration): boolean {
   if (ts.isParameter(declaration) || ts.isTypeParameterDeclaration(declaration)) return true;
-  if (ts.isBindingElement(declaration)) return true;
-  if (ts.isVariableDeclaration(declaration)) return !isModuleLevel(declaration);
-  if (ts.isFunctionDeclaration(declaration) || ts.isClassDeclaration(declaration)) {
-    return !isTopLevel(declaration);
+  let node: ts.Node = declaration;
+  while (
+    ts.isBindingElement(node) ||
+    ts.isObjectBindingPattern(node) ||
+    ts.isArrayBindingPattern(node)
+  ) {
+    node = node.parent;
   }
-  return false;
+  if (ts.isVariableDeclaration(node)) {
+    const statement = node.parent.parent;
+    return !ts.isVariableStatement(statement) || !ts.isSourceFile(statement.parent);
+  }
+  if (
+    ts.isImportClause(node) ||
+    ts.isImportSpecifier(node) ||
+    ts.isNamespaceImport(node) ||
+    ts.isImportEqualsDeclaration(node)
+  ) {
+    return false;
+  }
+  return !ts.isSourceFile(node.parent);
 }
 
 /** An identifier in an expression or type position, not a member or property name. */

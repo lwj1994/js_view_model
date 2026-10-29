@@ -284,7 +284,7 @@ const trayBinding = mainRuntime.createBinding({
   onUpdate: () => scheduleTrayMenuRefresh(),
 });
 
-const trayModel = trayBinding.watch(traySpec);
+trayBinding.watch(traySpec);
 ```
 
 `onUpdate` runs at the first watched event of a synchronous update, so schedule the menu rebuild (for example with `setImmediate`) rather than reading state synchronously. Dispose the Binding together with the tray or window its callback captures.
