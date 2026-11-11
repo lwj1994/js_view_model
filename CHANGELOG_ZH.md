@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- 新增 HarmonyOS / ArkUI 回调适配预览，支持组件级 Binding、`watch`/`read`、recycle 恢复，以及独立的应用/窗口生命周期 token。`onUpdate` 延后（默认 microtask，或使用 `scheduleUpdate`）并合并投递，避免 ArkUI 拷贝中间状态；`scope.setVisible` 只暂停共享 Runtime 上该页面的刷新；`createViewModelHarmonyLifecycle` 支持初始 `active: false`。
+- 新增本地 OHPM 包构建，输出 ES2017 JavaScript、共享 core 身份和 TypeScript 声明，不依赖其他 UI 框架；同时提供 TS 门面 / ArkUI V2 计数器示例及中英文集成文档。
+- 新增适配器、npm 入口、隔离 OHPM 产物和 TS 门面验证。基于 Node 的检查不覆盖 ArkTS 编译与鸿蒙真机验证。
+
 ## [0.4.0] - 2026-10-29
 
 - 按 Flutter 1.2.1 `c5e57d8` 对齐共享核心，包括 PR #82 与后续重入所有权、状态事件修复；保留不与 build 耦合的 Binding 生命周期。

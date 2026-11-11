@@ -13,6 +13,8 @@
 - `src/taro-vue/`：可选 Taro 4 页面与应用生命周期适配。
 - `src/eslint/`：可选类型感知 ESLint 插件（`@lwjlol/view_model/eslint`），对齐 Flutter
   `view_model_lint` 规则。
+- `src/harmony/`：可选 HarmonyOS 宿主回调与生命周期适配；保持 TS/JS core，ArkUI 通过显式回调更新可观察状态。
+- `examples/harmony-counter/`：原生 ArkUI V2 页面与 TS 门面示例；使用生成的 OHPM 包根入口。
 - `scripts/`：构建后 package exports 与 ESM/CJS 身份冒烟验证。
 - `tests/`：核心、React、平台与 ESLint 规则测试。
 
