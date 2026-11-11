@@ -21,7 +21,7 @@ HarmonyOS 适配器把现有 TS/JS core 接入 ArkUI 宿主，提供显式 Scope
 
 两个 Harmony 入口都会重新导出 core API。**npm 根入口**仍然只导出 core，与生成的 OHPM 根入口不同。
 
-这些 Harmony 入口是**当前源码中尚未发布的新增能力**。此前发布的 npm `0.3.1` 包不包含 `/harmony`。请使用当前 checkout 生成的 OHPM 产物；上表中的 npm 入口指本地重新构建的包，或未来包含该变更的发行版。
+这些 Harmony 入口是**当前源码中尚未发布的新增能力**。截至 `0.4.0` 的已发布 npm 版本均不包含 `/harmony`。请使用当前 checkout 生成的 OHPM 产物；上表中的 npm 入口指本地重新构建的包，或未来包含该变更的发行版。
 
 在仓库根目录构建本地 OHPM 包：
 
@@ -52,18 +52,21 @@ import {
 } from '@lwjlol/view_model';
 ```
 
-| API                                                    | 行为                                                                               |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `createViewModelHarmonyScope({ runtime?, onUpdate? })` | 创建一个稳定 Binding。未注入 Runtime 时，Scope 创建并持有独立 Runtime。            |
-| `scope.watch(spec)`                                    | 获取当前 generation，普通变化通过 Scope 的稳定 `onUpdate` 回调送达。               |
-| `scope.read(spec)`                                     | 获取当前 generation，不增加普通变化的观察；仍参与 generation 失效通知。            |
-| `scope.runtime`、`scope.binding`                       | 暴露现有 core Runtime 和 Binding，供组合与高级操作使用。                           |
-| `scope.ownsRuntime`                                    | 表示释放 Scope 时是否同时释放 Runtime。                                            |
-| `scope.isDisposed`                                     | Scope、自身 Binding 或 Runtime 任一已释放时为 true。                               |
-| `scope.dispose()`                                      | 停止 Scope 更新回调，释放 Binding，再释放由 Scope 持有的 Runtime。可安全重复调用。 |
-| `createViewModelHarmonyLifecycle(runtime)`             | 创建初始为 active 的生命周期来源，持有独立 Runtime 暂停 token。                    |
-| `lifecycle.setActive(active)`                          | 暂停或恢复该来源；多个来源由 Runtime 聚合。                                        |
-| `lifecycle.dispose()`                                  | 仅移除该来源的暂停 token，不释放 Runtime。                                         |
+| API                                                                          | 行为                                                                                      |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `createViewModelHarmonyScope({ runtime?, id?, onUpdate?, scheduleUpdate? })` | 创建一个稳定 Binding。未注入 Runtime 时，Scope 创建并持有独立 Runtime。                   |
+| `onUpdate`                                                                   | 在同步更新事务结束后运行，每次调度的 flush 最多一次；应在其中重新解析 watch 的 Spec。     |
+| `scheduleUpdate(flush)`                                                      | 延后 `onUpdate`，默认使用 microtask。必须稍后且恰好调用一次 `flush`，不能同步调用。       |
+| `scope.watch(spec)`                                                          | 获取当前 generation，普通变化通过 Scope 的稳定 `onUpdate` 回调送达。                      |
+| `scope.read(spec)`                                                           | 获取当前 generation，不增加普通变化的观察；仍参与 generation 失效通知。                   |
+| `scope.runtime`、`scope.binding`                                             | 暴露现有 core Runtime 和 Binding，供组合与高级操作使用。                                  |
+| `scope.ownsRuntime`                                                          | 表示释放 Scope 时是否同时释放 Runtime。                                                   |
+| `scope.isDisposed`                                                           | Scope、自身 Binding 或 Runtime 任一已释放时为 true。                                      |
+| `scope.setVisible(visible)`、`scope.isVisible`                               | 仅暂停或恢复该 Scope 的宿主刷新；重新可见时，待处理变化合并送达一次。                     |
+| `scope.dispose()`                                                            | 停止 Scope 更新回调，释放 Binding，再释放由 Scope 持有的 Runtime。可安全重复调用。        |
+| `createViewModelHarmonyLifecycle(runtime, { active? })`                      | 创建持有独立 Runtime 暂停 token 的生命周期来源；除非传入 `active: false`，初始为 active。 |
+| `lifecycle.setActive(active)`、`lifecycle.isActive`                          | 暂停或恢复该来源；多个来源由 Runtime 聚合。                                               |
+| `lifecycle.dispose()`                                                        | 仅移除该来源的暂停 token，不释放 Runtime。                                                |
 
 `watch` 和 `read` 会立即执行获取操作。重复 `watch` 复用同一个 Binding 回调，不会在每次调用时增加监听器。之后调用 `read` 也不会移除这个 Scope 已经建立的 watch。
 
@@ -77,18 +80,18 @@ import {
 - 解析当前 ViewModel 的命令；
 - 读取新快照的稳定 `onUpdate` 回调。
 
-只有具名的 `CounterFacade` 和具体的 `CounterSnapshot` 进入 `.ets`。门面暴露 `getSnapshot()`、`increment()`、`recycle()` 和 `dispose()`。快照包含 `number`，页面因此不需要把类对象作为 DI token 传递，也不依赖复杂的 TypeScript 泛型推导。
+只有具名的 `CounterFacade` 和具体的 `CounterSnapshot` 进入 `.ets`。门面暴露 `getSnapshot()`、`increment()`、`recycle()`、`setVisible()` 和 `dispose()`。快照包含 `number`，页面因此不需要把类对象作为 DI token 传递，也不依赖复杂的 TypeScript 泛型推导。
 
 TS 门面中关键的回调方式是：
 
 ```ts
 this.scope = createViewModelHarmonyScope({
-  onUpdate: () => {
-    const current = this.scope.watch(counterSpec);
-    onUpdate(new CounterSnapshot(current.state.count));
-  },
+  // Deferred by the Scope; resolve again to pick up the final state and any replacement.
+  onUpdate: () => onUpdate(this.getSnapshot()),
 });
 ```
+
+底层 core Binding 只在同步更新事务的**第一个** watched 事件时发出信号；在这个信号里同步读取，可能把中间状态写进 ArkUI，并错过同一事务后续的事件。因此 Scope 从不同步调用 `onUpdate`：它调度一次 flush（默认 microtask），并在 flush 运行前合并所有变化。不要把 `scheduleUpdate` 换成立即调用 `flush` 的函数。
 
 像完整示例一样，在 Scope 赋值完成后再进行首次获取。资源初始化应放在 ViewModel 的 `onCreate`，或获取实例后执行的显式 action 中；构造函数和 Spec builder 应保持纯净。
 
@@ -112,19 +115,21 @@ aboutToAppear(): void {
 
 发布更新时，应重新解析被 watch 的 Spec。`runtime.recycle(spec)` 会强制释放旧 generation，下一次 `scope.watch(spec)` 获取替代实例。永久缓存的 ViewModel 引用，或直接安装的 `subscribeState` 监听器仍绑定旧对象，不能代替这种 Scope 级绑定。
 
-Scope 使用 core Binding 的事务通知规则：同一同步通知事务中的普通 watch 更新按 Binding 去重，Runtime 暂停期间的更新合并到恢复时送达。UI 渲染调度仍由 ArkUI 负责。
+Scope 先使用 core Binding 的事务通知规则，再延后投递：watch 更新在每次调度的 flush 中合并为一次 `onUpdate`；Scope 隐藏或 Runtime 暂停期间的变化合并到恢复时送达；`dispose()` 前已排队的更新会被丢弃。`@Local`/`@Trace` 赋值后的 UI 渲染调度仍由 ArkUI 负责。
+
+异步 ViewModel action 遵循 core 规则：每次 `await` 之后先检查 `this.isDisposed`，再解析依赖或更新状态。
 
 ## 组件所有权与可见性
 
-| 宿主事件                   | 适配器操作                                                 |
-| -------------------------- | ---------------------------------------------------------- |
-| 组件 `aboutToAppear`       | 创建门面或 Scope，执行首次 `watch`，将快照写入可观察状态。 |
-| 组件 `build`               | 仅读取展示状态，不获取 ViewModel 或安装订阅。              |
-| 组件 `aboutToDisappear`    | 释放门面或 Scope；组件销毁期间不再更新 ArkUI 状态。        |
-| 保留中的页面隐藏或失去焦点 | 保留 Binding；可见性变化本身不等于释放。                   |
-| 组件被保留的页面重新显示   | 继续使用现有 Scope 和 generation。                         |
+| 宿主事件                   | 适配器操作                                                               |
+| -------------------------- | ------------------------------------------------------------------------ |
+| 组件 `aboutToAppear`       | 创建门面或 Scope，执行首次 `watch`，将快照写入可观察状态。               |
+| 组件 `build`               | 仅读取展示状态，不获取 ViewModel 或安装订阅。                            |
+| 组件 `aboutToDisappear`    | 释放门面或 Scope；组件销毁期间不再更新 ArkUI 状态。                      |
+| `@Entry` 页面 `onPageHide` | 调用 `scope.setVisible(false)`；保留 Binding，可见性变化本身不等于释放。 |
+| `@Entry` 页面 `onPageShow` | 调用 `scope.setVisible(true)`；待处理变化合并送达一次。                  |
 
-适配器不会自动查找组件生命周期方法或导航事件，需要宿主显式连接。可复用组件的回收、复用回调需要单独定义释放与重新获取所有权的策略；最小 Counter 示例使用普通组件。
+适配器不会自动查找组件生命周期方法或导航事件，需要宿主显式连接。`onPageShow`/`onPageHide` 只在 `@Entry` 组件上触发；使用 `Navigation`/`NavDestination` 的页面应改为转发目标页的 `onShown`/`onHidden`。`setVisible(false)` 只暂停该 Scope 的宿主投递：ViewModel 继续运行，不调用 `onPause`，共享 Runtime 上的其他 Scope 不受影响。可复用组件的回收、复用回调需要单独定义释放与重新获取所有权的策略；最小 Counter 示例使用普通组件。
 
 ## Runtime 边界、共享与回收
 
@@ -153,7 +158,7 @@ lifecycle.dispose();
 
 暂停影响**该 Runtime 中所有已激活的 ViewModel**。它调用 `onPause`/`onResume`，并延迟 Binding 投递的 UI 回调；它不会停止 action、状态修改、直接的 `subscribe`/`subscribeState` 回调或任意任务。需要在后台停止的工作，必须实现自身的生命周期处理。
 
-页面级生命周期只能用于暂停独立的页面 Runtime。某个页面隐藏时暂停共享应用 Runtime，也会影响其他页面。如果既要共享应用对象图，又只想改变单个页面的工作，应将可见性作为普通业务输入传递。
+不要把页面可见性接到共享 Runtime 的生命周期上：某个页面隐藏时暂停共享应用 Runtime，也会暂停其他页面。页面刷新使用 `scope.setVisible`；如果页面 ViewModel 本身的工作也必须停止，应将可见性作为普通业务输入传递。应用已在后台时才挂接生命周期来源，应传入 `{ active: false }`。
 
 每个生命周期桥接都有自己的 token。移除一个 inactive 来源，不会恢复仍被其他来源暂停的 Runtime。最终退出时，先释放 owner Scope/Binding，再释放 Runtime，最后移除生命周期来源；先释放 Runtime 可避免最后的清理触发待处理 UI 更新。
 
@@ -164,7 +169,7 @@ lifecycle.dispose();
 - 所选 DevEco/SDK 版本下的 OHPM 依赖与类型声明解析；
 - JS/TS 到 ArkTS 的门面调用与原生 UI 刷新；
 - watch 状态、仅 read 的命令，以及 recycle 后替代 generation 的获取；
-- 页面保留、销毁，以及使用可复用组件时的策略；
+- 页面保留、页面显隐对应的 `setVisible`、销毁，以及使用可复用组件时的策略；
 - 共享 Runtime 的实例身份与独立生命周期暂停来源。
 
 Node 测试或 TS 构建成功不能证明这些原生行为。JS 语法兼容性与运行时 API 可用性也需要验证；语法转译不会补齐缺失的运行时 API。完整 `.ets` 迁移、由本库提供原生 UI 组件，以及自动 ArkUI 依赖跟踪，都不属于这个适配器的范围。

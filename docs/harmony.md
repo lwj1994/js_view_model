@@ -21,7 +21,7 @@ Keeping the business code in `.ts` is deliberate. ArkTS supports importing TS/JS
 
 Both Harmony entry points re-export the core APIs. The **npm root** remains the core-only entry; its exports are not the same as the generated OHPM root.
 
-These Harmony entry points are **unreleased additions in this checkout**. The previously published npm `0.3.1` package does not include `/harmony`. Use the OHPM output generated from this checkout; the npm entry above describes a locally rebuilt package or a future release containing this change.
+These Harmony entry points are **unreleased additions in this checkout**. Published npm releases up to and including `0.4.0` do not include `/harmony`. Use the OHPM output generated from this checkout; the npm entry above describes a locally rebuilt package or a future release containing this change.
 
 Build the local OHPM package from the repository root:
 
@@ -52,18 +52,21 @@ import {
 } from '@lwjlol/view_model';
 ```
 
-| API                                                    | Behavior                                                                                                                      |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `createViewModelHarmonyScope({ runtime?, onUpdate? })` | Creates one stable Binding. Without an injected Runtime, the Scope creates and owns an independent Runtime.                   |
-| `scope.watch(spec)`                                    | Acquires the current generation and delivers ordinary changes through the Scope's stable `onUpdate` callback.                 |
-| `scope.read(spec)`                                     | Acquires the current generation without adding ordinary-change observation. It still participates in generation invalidation. |
-| `scope.runtime`, `scope.binding`                       | Expose the existing core Runtime and Binding for composition and advanced operations.                                         |
-| `scope.ownsRuntime`                                    | Indicates whether Scope disposal also disposes its Runtime.                                                                   |
-| `scope.isDisposed`                                     | Is true after the Scope, its Binding, or its Runtime is disposed.                                                             |
-| `scope.dispose()`                                      | Stops Scope update delivery, disposes its Binding, and then disposes a Scope-owned Runtime. Repeated disposal is safe.        |
-| `createViewModelHarmonyLifecycle(runtime)`             | Creates an initially active lifecycle source with its own Runtime pause token.                                                |
-| `lifecycle.setActive(active)`                          | Pauses or resumes that source. Multiple sources are aggregated by the Runtime.                                                |
-| `lifecycle.dispose()`                                  | Removes only that source's pause token. It does not dispose the Runtime.                                                      |
+| API                                                                          | Behavior                                                                                                                      |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `createViewModelHarmonyScope({ runtime?, id?, onUpdate?, scheduleUpdate? })` | Creates one stable Binding. Without an injected Runtime, the Scope creates and owns an independent Runtime.                   |
+| `onUpdate`                                                                   | Runs after the synchronous update transaction, at most once per scheduled flush. Re-resolve watched Specs inside it.          |
+| `scheduleUpdate(flush)`                                                      | Defers `onUpdate`; defaults to a microtask. It must call `flush` later, never synchronously, and exactly once.                |
+| `scope.watch(spec)`                                                          | Acquires the current generation and delivers ordinary changes through the Scope's stable `onUpdate` callback.                 |
+| `scope.read(spec)`                                                           | Acquires the current generation without adding ordinary-change observation. It still participates in generation invalidation. |
+| `scope.runtime`, `scope.binding`                                             | Expose the existing core Runtime and Binding for composition and advanced operations.                                         |
+| `scope.ownsRuntime`                                                          | Indicates whether Scope disposal also disposes its Runtime.                                                                   |
+| `scope.isDisposed`                                                           | Is true after the Scope, its Binding, or its Runtime is disposed.                                                             |
+| `scope.setVisible(visible)`, `scope.isVisible`                               | Pauses or resumes only this Scope's host refreshes. Pending changes are delivered once when it becomes visible again.         |
+| `scope.dispose()`                                                            | Stops Scope update delivery, disposes its Binding, and then disposes a Scope-owned Runtime. Repeated disposal is safe.        |
+| `createViewModelHarmonyLifecycle(runtime, { active? })`                      | Creates a lifecycle source with its own Runtime pause token. It starts active unless `active: false` is passed.               |
+| `lifecycle.setActive(active)`, `lifecycle.isActive`                          | Pauses or resumes that source. Multiple sources are aggregated by the Runtime.                                                |
+| `lifecycle.dispose()`                                                        | Removes only that source's pause token. It does not dispose the Runtime.                                                      |
 
 `watch` and `read` are imperative acquisitions. Repeated `watch` calls use the same Binding callback instead of adding a new listener on each call. Calling `read` later does not remove a watch already established by that Scope.
 
@@ -77,18 +80,18 @@ The [CounterFacade.ts](../examples/harmony-counter/src/main/ets/viewmodel/Counte
 - commands that resolve the current ViewModel;
 - the stable `onUpdate` callback that reads a fresh snapshot.
 
-Only a named `CounterFacade` and a concrete `CounterSnapshot` cross into `.ets`. The facade exposes `getSnapshot()`, `increment()`, `recycle()`, and `dispose()`. Its snapshot contains a `number`, so the page does not need to pass class objects as DI tokens or depend on complex TypeScript generic inference.
+Only a named `CounterFacade` and a concrete `CounterSnapshot` cross into `.ets`. The facade exposes `getSnapshot()`, `increment()`, `recycle()`, `setVisible()`, and `dispose()`. Its snapshot contains a `number`, so the page does not need to pass class objects as DI tokens or depend on complex TypeScript generic inference.
 
 The important callback pattern, inside the TS facade, is:
 
 ```ts
 this.scope = createViewModelHarmonyScope({
-  onUpdate: () => {
-    const current = this.scope.watch(counterSpec);
-    onUpdate(new CounterSnapshot(current.state.count));
-  },
+  // Deferred by the Scope; resolve again to pick up the final state and any replacement.
+  onUpdate: () => onUpdate(this.getSnapshot()),
 });
 ```
+
+The underlying core Binding signals only the **first** watched event of a synchronous update transaction, so reading inside that signal could copy an intermediate state into ArkUI and miss later events of the same transaction. The Scope therefore never calls `onUpdate` synchronously: it schedules one flush (a microtask by default) and coalesces every change until that flush runs. Do not replace `scheduleUpdate` with a function that calls `flush` immediately.
 
 Keep the first acquisition after the Scope is assigned, as the complete example does. Resource initialization belongs in ViewModel `onCreate` or explicit actions after acquisition; constructors and Spec builders should remain pure.
 
@@ -112,19 +115,21 @@ aboutToAppear(): void {
 
 Always re-resolve watched Specs when publishing updates. `runtime.recycle(spec)` force-disposes the old generation; the next `scope.watch(spec)` obtains its replacement. A permanently cached ViewModel reference or a direct `subscribeState` listener remains attached to the old object and is not a replacement for this Scope-level binding.
 
-The Scope uses the core Binding's transaction delivery: ordinary watched updates are deduplicated by Binding within a synchronous notification transaction, and paused Runtime updates are coalesced until resume. ArkUI remains responsible for scheduling its UI rendering.
+The Scope uses the core Binding's transaction delivery and then defers it: watched updates are coalesced into one `onUpdate` per scheduled flush, a hidden Scope or paused Runtime coalesces changes until it resumes, and an update queued before `dispose()` is dropped. ArkUI remains responsible for scheduling its UI rendering after `@Local`/`@Trace` assignments.
+
+Asynchronous ViewModel actions follow the core rule: after each `await`, check `this.isDisposed` before resolving dependencies or updating state.
 
 ## Component ownership and visibility
 
-| Host event                                   | Adapter action                                                                               |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Component `aboutToAppear`                    | Create the facade/Scope, perform initial `watch`, and copy the snapshot into observed state. |
-| Component `build`                            | Read presentation state only; do not acquire ViewModels or install subscriptions.            |
-| Component `aboutToDisappear`                 | Dispose the facade/Scope. Do not update ArkUI state while tearing down the component.        |
-| Retained page hides or loses focus           | Keep its Binding. Visibility alone is not disposal.                                          |
-| Page returns while its component is retained | Continue using the existing Scope and generation.                                            |
+| Host event                   | Adapter action                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| Component `aboutToAppear`    | Create the facade/Scope, perform initial `watch`, and copy the snapshot into observed state. |
+| Component `build`            | Read presentation state only; do not acquire ViewModels or install subscriptions.            |
+| Component `aboutToDisappear` | Dispose the facade/Scope. Do not update ArkUI state while tearing down the component.        |
+| `@Entry` page `onPageHide`   | Call `scope.setVisible(false)`. Keep the Binding; visibility alone is not disposal.          |
+| `@Entry` page `onPageShow`   | Call `scope.setVisible(true)`; pending changes are published once.                           |
 
-The adapter does not discover component lifecycle methods or navigation events. The host supplies those connections explicitly. A reusable component's recycle/reuse callbacks need their own policy for releasing and reacquiring ownership; the minimal Counter example uses a normal component.
+The adapter does not discover component lifecycle methods or navigation events. The host supplies those connections explicitly. `onPageShow`/`onPageHide` run only on `@Entry` components; a page built with `Navigation`/`NavDestination` forwards its destination's `onShown`/`onHidden` instead. `setVisible(false)` pauses only that Scope's host delivery: ViewModels keep running, `onPause` is not called, and other Scopes on a shared Runtime are unaffected. A reusable component's recycle/reuse callbacks need their own policy for releasing and reacquiring ownership; the minimal Counter example uses a normal component.
 
 ## Runtime boundaries, sharing, and recycle
 
@@ -153,7 +158,7 @@ For an application-owned Runtime, UIAbility's `onForeground` and `onBackground` 
 
 Pausing affects **every activated ViewModel in that Runtime**. It calls `onPause`/`onResume` and delays Binding-delivered UI callbacks; it does not stop actions, state changes, direct `subscribe`/`subscribeState` callbacks, or arbitrary tasks. Work that should stop in the background must implement its own lifecycle handling.
 
-A page-specific lifecycle should only pause an independent page Runtime. Pausing a shared application Runtime when one page hides also pauses other pages. To share the application graph while changing only one page's work, pass visibility as ordinary business input.
+Do not connect page visibility to a shared Runtime lifecycle: pausing a shared application Runtime when one page hides also pauses other pages. Use `scope.setVisible` for page refreshes, and pass visibility as ordinary business input when a page's ViewModel work itself must stop. If you attach a lifecycle source while the application is already in the background, pass `{ active: false }`.
 
 Every lifecycle bridge contributes its own token. Removing one inactive source does not resume a Runtime still paused by another source. At final shutdown, release owner Scopes/Bindings, dispose the Runtime, and detach the lifecycle source; disposing the Runtime first prevents final teardown from flushing pending UI updates.
 
@@ -164,7 +169,7 @@ Use the [Counter validation steps](../examples/harmony-counter/README.md#4-build
 - OHPM dependency and declaration resolution with the chosen DevEco/SDK version;
 - JS/TS-to-ArkTS facade calls and native UI refresh;
 - watched state, read-only commands, and generation replacement after recycle;
-- page retention, destruction, and any reusable component policy;
+- page retention, `setVisible` from page show/hide, destruction, and any reusable component policy;
 - shared Runtime identities and independent lifecycle pause sources.
 
 A successful Node test or TS build does not establish those native results. JS syntax compatibility and available runtime APIs also need validation; syntax transpilation alone does not provide missing runtime APIs. Full `.ets` migration, native UI widgets supplied by the library, and automatic ArkUI dependency tracking are outside this adapter's scope.

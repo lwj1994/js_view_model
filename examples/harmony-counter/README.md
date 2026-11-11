@@ -11,11 +11,11 @@ The repository validates the TypeScript facade and the generated package in Node
 | File                                                          | Responsibility                                                                                |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | [CounterFacade.ts](./src/main/ets/viewmodel/CounterFacade.ts) | Business ViewModel, stable Spec, Scope ownership, commands, and a concrete `CounterSnapshot`. |
-| [Index.ets](./src/main/ets/pages/Index.ets)                   | Component lifecycle and ArkUI rendering through `@Local count`.                               |
+| [Index.ets](./src/main/ets/pages/Index.ets)                   | Component and page lifecycle, and ArkUI rendering through `@Local count`.                     |
 
 The example uses the local **OHPM package root** import, `@lwjlol/view_model`. The npm distribution exposes the same adapter as `@lwjlol/view_model/harmony`; change the import only when using that distribution in a TS/JS toolchain.
 
-Harmony support is an **unreleased source addition**. The previously published npm `0.3.1` package does not include `/harmony`; build the OHPM package from this checkout. The npm import refers to a locally rebuilt package or a future release containing the adapter.
+Harmony support is an **unreleased source addition**. Published npm releases up to and including `0.4.0` do not include `/harmony`; build the OHPM package from this checkout. The npm import refers to a locally rebuilt package or a future release containing the adapter.
 
 ## 1. Build the local OHPM package
 
@@ -64,7 +64,7 @@ Build and run the application on your selected simulator or device. Verify these
 1. The page initially displays `0`.
 2. Each **Increment** tap updates the displayed count once.
 3. **Recreate counter** force-recycles the generation and displays `0`; the next Increment tap displays `1`.
-4. Hiding a retained page does not dispose its Scope. Returning to it retains the count while the process and component remain alive.
+4. Hiding a retained page does not dispose its Scope; `onPageHide` only pauses its UI delivery. Returning to it retains the count while the process and component remain alive.
 5. Removing/destroying the page invokes `aboutToDisappear`, which releases the Scope. A newly created page starts at `0`.
 
 The last two checks require a navigation host if you want to exercise page retention explicitly. Backgrounding and foregrounding this single-page sample can check retention while the process stays alive, but it is not a substitute for the destruction check. In a new project, place a temporary breakpoint in `aboutToDisappear` when adding that navigation check.
@@ -73,7 +73,7 @@ The last two checks require a navigation host if you want to exercise page reten
 
 `aboutToAppear` creates a `CounterFacade` and obtains the initial snapshot. The facade owns one Scope, one Binding, and an independent Runtime. Its `getSnapshot()` calls `scope.watch(counterSpec)` to acquire the current ViewModel and returns a concrete snapshot containing a number.
 
-Later, the Scope's stable `onUpdate` callback obtains another snapshot. The callback writes `snapshot.count` to ArkUI's `@Local count`, which is what the page renders. Re-resolving the Spec inside the callback also handles force recycle; the facade never holds a permanent reference to the old ViewModel.
+Later, the Scope's stable `onUpdate` callback obtains another snapshot. The Scope runs it after the update transaction finishes (a microtask by default), coalescing several changes into one callback, so the snapshot is never an intermediate state. The callback writes `snapshot.count` to ArkUI's `@Local count`, which is what the page renders. Re-resolving the Spec inside the callback also handles force recycle; the facade never holds a permanent reference to the old ViewModel.
 
 The button action uses `scope.read(counterSpec)` because the action itself does not establish a rendering subscription. It still resolves the same generation already watched by this Scope. The Spec has no key, so a second facade gets an independent counter.
 
@@ -81,7 +81,9 @@ The button action uses `scope.read(counterSpec)` because the action itself does 
 
 ## Lifecycle extension
 
-This minimal example does not install an application foreground/background adapter. Page hiding alone does not dispose the Binding or pause the Runtime. To connect UIAbility lifecycle callbacks, use the explicit lifecycle bridge described in the [integration guide](../../docs/harmony.md#runtime-pause-and-application-lifecycle).
+`onPageShow`/`onPageHide` forward to `CounterFacade.setVisible`, which pauses only this Scope's UI delivery while the page is hidden; changes made meanwhile are published once when it is shown again. Page hiding does not dispose the Binding or pause the Runtime. These page hooks run only on `@Entry` components; inside `Navigation`, forward `NavDestination`'s `onShown`/`onHidden` instead.
+
+This minimal example does not install an application foreground/background adapter. To connect UIAbility lifecycle callbacks, use the explicit lifecycle bridge described in the [integration guide](../../docs/harmony.md#runtime-pause-and-application-lifecycle).
 
 ## Validation boundary
 

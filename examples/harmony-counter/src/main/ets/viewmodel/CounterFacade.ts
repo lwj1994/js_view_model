@@ -34,10 +34,9 @@ export class CounterFacade {
 
   public constructor(onUpdate: (snapshot: CounterSnapshot) => void) {
     this.scope = createViewModelHarmonyScope({
-      onUpdate: () => {
-        // Resolve again: recycle may have replaced the previous ViewModel.
-        onUpdate(this.getSnapshot());
-      },
+      // The scope defers this callback until the update transaction finishes.
+      // Resolve again: recycle may have replaced the previous ViewModel.
+      onUpdate: () => onUpdate(this.getSnapshot()),
     });
   }
 
@@ -56,6 +55,11 @@ export class CounterFacade {
 
   public recycle(): void {
     this.scope.runtime.recycle(counterSpec);
+  }
+
+  /** Forward the page's onPageShow/onPageHide; hidden pages keep their state. */
+  public setVisible(visible: boolean): void {
+    this.scope.setVisible(visible);
   }
 
   public dispose(): void {

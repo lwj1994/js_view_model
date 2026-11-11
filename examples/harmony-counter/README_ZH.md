@@ -11,11 +11,11 @@
 | 文件                                                          | 职责                                                                              |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | [CounterFacade.ts](./src/main/ets/viewmodel/CounterFacade.ts) | 业务 ViewModel、稳定 Spec、Scope 所有权、操作命令，以及具体的 `CounterSnapshot`。 |
-| [Index.ets](./src/main/ets/pages/Index.ets)                   | 组件生命周期，以及通过 `@Local count` 渲染 ArkUI。                                |
+| [Index.ets](./src/main/ets/pages/Index.ets)                   | 组件与页面生命周期，以及通过 `@Local count` 渲染 ArkUI。                          |
 
 示例使用本地 **OHPM 包的根入口** `@lwjlol/view_model`。npm 发行包通过 `@lwjlol/view_model/harmony` 暴露相同适配器；仅在 TS/JS 工具链中使用 npm 发行包时修改导入路径。
 
-Harmony 支持是**源码中尚未发布的新增能力**。此前发布的 npm `0.3.1` 包不包含 `/harmony`，请从当前 checkout 构建 OHPM 包。上面的 npm 导入路径指本地重新构建的包，或未来包含适配器的发行版。
+Harmony 支持是**源码中尚未发布的新增能力**。截至 `0.4.0` 的已发布 npm 版本均不包含 `/harmony`，请从当前 checkout 构建 OHPM 包。上面的 npm 导入路径指本地重新构建的包，或未来包含适配器的发行版。
 
 ## 1. 构建本地 OHPM 包
 
@@ -64,7 +64,7 @@ OHPM 会将本地依赖写入 `entry/oh-package.json5`。如果移动了仓库�
 1. 页面初始显示 `0`。
 2. 每次点击 **Increment**，显示的数字更新一次。
 3. 点击 **Recreate counter** 会强制回收当前 generation，页面显示 `0`；再次 Increment 显示 `1`。
-4. 隐藏但仍被保留的页面不释放 Scope。只要进程与组件仍然存活，返回后计数保持不变。
+4. 隐藏但仍被保留的页面不释放 Scope，`onPageHide` 只暂停它的 UI 投递。只要进程与组件仍然存活，返回后计数保持不变。
 5. 移除或销毁页面时执行 `aboutToDisappear`，释放 Scope。重新创建页面时从 `0` 开始。
 
 要完整验证后两项，需要使用导航宿主操作页面保留与销毁。这个单页示例在进程保持存活时，切换前后台可以检查状态是否保留，但不能替代销毁检查。在新工程中加入导航验证时，可以临时在 `aboutToDisappear` 设置断点。
@@ -73,7 +73,7 @@ OHPM 会将本地依赖写入 `entry/oh-package.json5`。如果移动了仓库�
 
 `aboutToAppear` 创建 `CounterFacade`，并读取初始快照。门面持有一个 Scope、一个 Binding 和一个独立 Runtime。`getSnapshot()` 调用 `scope.watch(counterSpec)` 获取当前 ViewModel，并返回包含数字的具体快照。
 
-后续由 Scope 的稳定 `onUpdate` 回调获取新快照，再把 `snapshot.count` 写入 ArkUI 的 `@Local count`。页面只渲染这个字段。回调中重新解析 Spec 也能处理强制回收；门面不会永久缓存旧 ViewModel 引用。
+后续由 Scope 的稳定 `onUpdate` 回调获取新快照。Scope 在更新事务结束后（默认 microtask）运行该回调，并把多次变化合并为一次，因此快照不会是中间状态。回调再把 `snapshot.count` 写入 ArkUI 的 `@Local count`。页面只渲染这个字段。回调中重新解析 Spec 也能处理强制回收；门面不会永久缓存旧 ViewModel 引用。
 
 按钮操作使用 `scope.read(counterSpec)`，因为执行命令本身不需要建立渲染订阅。它仍会得到这个 Scope 已经 watch 的同一 generation。Spec 没有 key，因此第二个门面会获得独立计数器。
 
@@ -81,7 +81,9 @@ OHPM 会将本地依赖写入 `entry/oh-package.json5`。如果移动了仓库�
 
 ## 生命周期扩展
 
-最小示例没有安装应用前后台适配器。页面隐藏本身不会释放 Binding 或暂停 Runtime。若要连接 UIAbility 生命周期回调，请使用[集成指南](../../docs/zh/harmony.md#runtime-暂停与应用生命周期)中的显式生命周期桥接。
+`onPageShow`/`onPageHide` 转发到 `CounterFacade.setVisible`，页面隐藏期间只暂停这个 Scope 的 UI 投递；期间发生的变化在重新显示时合并送达一次。页面隐藏不会释放 Binding，也不会暂停 Runtime。这两个页面回调只在 `@Entry` 组件上触发；在 `Navigation` 中应改为转发 `NavDestination` 的 `onShown`/`onHidden`。
+
+最小示例没有安装应用前后台适配器。若要连接 UIAbility 生命周期回调，请使用[集成指南](../../docs/zh/harmony.md#runtime-暂停与应用生命周期)中的显式生命周期桥接。
 
 ## 验证边界
 

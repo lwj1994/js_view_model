@@ -140,6 +140,11 @@ export const checkoutSpec = viewModelSpec(CheckoutViewModel, () => new CheckoutV
      access `.value` in script and preserve refs across recycle. Each consuming
      component owns a Binding. Page hide retains ownership; `pauseOnHide`
      requires an isolated runtime. See the repository Vue/Taro guide.
+   - Use `@lwjlol/view_model/harmony` (or the generated OHPM package root) only
+     in `.ts` facades for ArkUI hosts: one `createViewModelHarmonyScope` per
+     component, copy concrete snapshots into `@Local`/`@Trace` from the deferred
+     `onUpdate`, forward page show/hide to `setVisible`, and dispose in
+     `aboutToDisappear`. It is an unreleased source preview.
    - Never generate a `@lwjlol/view_model/react` import or claim Web/SSR/RSC support.
    - Use one application Runtime for one sharing graph; use separate Runtimes
      for hard isolation, independent pause state, tests, or separate realms.

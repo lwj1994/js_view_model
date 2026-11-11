@@ -14,6 +14,15 @@ struct Index {
     this.count = counter.getSnapshot().count;
   }
 
+  // Page hooks run only on @Entry components; hiding pauses UI delivery, not the ViewModel.
+  onPageShow(): void {
+    this.counter?.setVisible(true);
+  }
+
+  onPageHide(): void {
+    this.counter?.setVisible(false);
+  }
+
   aboutToDisappear(): void {
     const counter = this.counter;
     this.counter = undefined;

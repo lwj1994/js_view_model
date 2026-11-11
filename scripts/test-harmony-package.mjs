@@ -7,6 +7,8 @@ import { build } from 'esbuild';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
+// Host updates are microtask-deferred; a timer runs after them.
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const temporary = await mkdtemp(join(tmpdir(), 'view-model-ohpm-'));
 try {
   const installed = join(temporary, 'installed');
@@ -39,9 +41,13 @@ try {
   });
   const first = scope.watch(spec);
   first.increment();
-  assert.deepEqual(published, [1]);
+  first.increment();
+  assert.deepEqual(published, []);
+  await settle();
+  assert.deepEqual(published, [2]);
   runtime.recycle(spec);
-  assert.deepEqual(published, [1, 0]);
+  await settle();
+  assert.deepEqual(published, [2, 0]);
   assert.notEqual(scope.read(spec), first);
   scope.dispose();
   assert.equal(runtime.isDisposed, false);
@@ -66,9 +72,18 @@ try {
   assert.equal(facade.getSnapshot().count, 0);
   facade.increment();
   assert.equal(facade.getSnapshot().count, 1);
+  await settle();
   facade.recycle();
   assert.equal(facade.getSnapshot().count, 0);
+  await settle();
   assert.deepEqual(snapshots, [1, 0]);
+  facade.setVisible(false);
+  facade.increment();
+  await settle();
+  assert.deepEqual(snapshots, [1, 0], 'hidden pages must not publish');
+  facade.setVisible(true);
+  await settle();
+  assert.deepEqual(snapshots, [1, 0, 1], 'showing the page publishes pending changes once');
   facade.dispose();
   assert.equal(facade.isDisposed, true);
   facade.dispose();
