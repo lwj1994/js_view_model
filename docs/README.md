@@ -23,7 +23,7 @@ and domain capabilities can use the same runtime without React.
 2. [Module composition and dependency injection](./dependency-injection.md)
 3. [Lifecycle, StrictMode, and pause/resume](./lifecycle.md)
 4. [React Native integration](./react-native.md) or
-   [Electron integration](./electron.md); see [HarmonyOS / ArkUI](./harmony.md) for the source preview
+   [Electron integration](./electron.md); see [HarmonyOS / ArkUI](./harmony.md) for the preview
 
 ### I am maintaining or reviewing a project
 
@@ -75,6 +75,6 @@ See [Vue 3 / Taro 4 integration](./vue-taro.md). The optional `@lwjlol/view_mode
 entry is an ESLint plugin loaded only by the lint process; see [ESLint rules](./lint.md). There is no `@lwjlol/view_model/react`, and this
 package makes no React Web, SSR, RSC, or browser hydration promise.
 
-The unreleased `@lwjlol/view_model/harmony` entry and local OHPM package are a
-[HarmonyOS / ArkUI source preview](./harmony.md). Node tests cover the callback adapter,
+The `@lwjlol/view_model/harmony` entry (since 0.5.0) and local OHPM package are a
+[HarmonyOS / ArkUI preview](./harmony.md). Node tests cover the callback adapter,
 package exports, and TS facade; DevEco compilation and device validation remain separate.

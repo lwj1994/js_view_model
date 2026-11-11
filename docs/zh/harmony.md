@@ -21,7 +21,7 @@ HarmonyOS 适配器把现有 TS/JS core 接入 ArkUI 宿主，提供显式 Scope
 
 两个 Harmony 入口都会重新导出 core API。**npm 根入口**仍然只导出 core，与生成的 OHPM 根入口不同。
 
-这些 Harmony 入口是**当前源码中尚未发布的新增能力**。截至 `0.4.0` 的已发布 npm 版本均不包含 `/harmony`。请使用当前 checkout 生成的 OHPM 产物；上表中的 npm 入口指本地重新构建的包，或未来包含该变更的发行版。
+npm 的 `/harmony` 入口**自 `0.5.0` 起**可用。OHPM 包未发布到 OHPM 仓库，请从对应发行 tag 的源码生成。
 
 在仓库根目录构建本地 OHPM 包：
 

@@ -1,6 +1,6 @@
 # view_model：状态管理、依赖注入与模块架构
 
-> 0.4.0 将共享核心对齐 Flutter 1.2.1，并以 [ESLint 插件](./docs/zh/lint.md) 提供 Flutter `view_model_lint` 1.3.3 的规则。从 0.3.x 升级前请阅读 [迁移与覆盖说明](./docs/zh/flutter-comparison.md)，尤其是 update、listenState 和通知传播的破坏性改动。
+> 0.5.0 新增 [HarmonyOS / ArkUI 适配预览](./docs/zh/harmony.md)。0.4.0 已将共享核心对齐 Flutter 1.2.1，并以 [ESLint 插件](./docs/zh/lint.md) 提供 Flutter `view_model_lint` 1.3.3 的规则。从 0.3.x 升级前请阅读 [迁移与覆盖说明](./docs/zh/flutter-comparison.md)，尤其是 update、listenState 和通知传播的破坏性改动。
 
 [![CI](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj1994/js_view_model/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40lwjlol%2Fview_model.svg)](https://www.npmjs.com/package/@lwjlol/view_model)
@@ -15,7 +15,7 @@ npm 包名为 [`@lwjlol/view_model`](https://www.npmjs.com/package/@lwjlol/view_
 `view_model` 不只管理页面状态。功能、repository、service、coordinator、设备连接或领域能力都可以成为受管理的 ViewModel。模块通过 `viewModelBinding` 按需解析彼此，在明确的 `ViewModelRuntime` 内共享实例，并在最后一个 owner 离开后释放资源。
 
 ```sh
-npm install @lwjlol/view_model@0.4.0
+npm install @lwjlol/view_model@0.5.0
 ```
 
 ## Skill 安装
@@ -28,7 +28,7 @@ npx skills add https://github.com/lwj1994/js_view_model --skill js-view-model
 
 > [!IMPORTANT]
 > 本包支持 React Native、Electron 和可选的 Taro 4 + Vue 3 集成；不支持普通 React Web、SSR 或 React Server Components。
-> HarmonyOS / ArkUI 适配器是尚未发布的源码预览，SDK 验证边界见下文。
+> HarmonyOS / ArkUI 适配器是预览版，SDK 验证边界见下文。
 
 ---
 
@@ -183,7 +183,7 @@ export function shutdownApplication(): void {
 | Vue 3 bridge                        | `@lwjlol/view_model/vue`          | 可选       |
 | Taro 4 + Vue 3                      | `@lwjlol/view_model/taro-vue`     | 可选       |
 | ESLint（仅在 lint 进程中）          | `@lwjlol/view_model/eslint`       | 可选       |
-| HarmonyOS / ArkUI 宿主              | `@lwjlol/view_model/harmony`      | 源码预览   |
+| HarmonyOS / ArkUI 宿主              | `@lwjlol/view_model/harmony`      | 预览       |
 | 普通 React Web / SSR                | 无                                | **不支持** |
 
 平台入口会重导出 core API。建议从 `@lwjlol/view_model/core` 导入 ViewModel 与 Spec，从对应平台入口导入 Scope 与 hooks，让运行边界清晰可见。本库刻意不提供 `@lwjlol/view_model/react`。
@@ -217,7 +217,7 @@ Harmony 适配器复用 TS/JS core，通过稳定的组件 Binding 与显式宿�
 
 在本仓库源码中运行 `npm run build:harmony`，生成可本地安装的 OHPM 包 `dist/ohpm`。
 OHPM 包根重导出 Harmony 适配器与 core API；npm 构建则通过
-`@lwjlol/view_model/harmony` 提供入口。此前发布的 npm `0.3.1` 不包含这项新增功能。
+`@lwjlol/view_model/harmony` 提供入口，自 npm `0.5.0` 起可用。OHPM 包未发布到 OHPM 仓库，需要本地构建。
 
 OHPM 构建将 JavaScript 语法降至 ES2017。适配器和包测试在 Node 下执行，
 不代表 ArkTS 编译、运行时内建 API 或真机行为已经验证。

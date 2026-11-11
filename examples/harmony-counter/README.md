@@ -15,7 +15,7 @@ The repository validates the TypeScript facade and the generated package in Node
 
 The example uses the local **OHPM package root** import, `@lwjlol/view_model`. The npm distribution exposes the same adapter as `@lwjlol/view_model/harmony`; change the import only when using that distribution in a TS/JS toolchain.
 
-Harmony support is an **unreleased source addition**. Published npm releases up to and including `0.4.0` do not include `/harmony`; build the OHPM package from this checkout. The npm import refers to a locally rebuilt package or a future release containing the adapter.
+The npm `/harmony` entry is available **since `0.5.0`**. The OHPM package is not published to the OHPM registry; build it from this checkout.
 
 ## 1. Build the local OHPM package
 

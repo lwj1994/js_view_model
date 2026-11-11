@@ -15,7 +15,7 @@
 
 示例使用本地 **OHPM 包的根入口** `@lwjlol/view_model`。npm 发行包通过 `@lwjlol/view_model/harmony` 暴露相同适配器；仅在 TS/JS 工具链中使用 npm 发行包时修改导入路径。
 
-Harmony 支持是**源码中尚未发布的新增能力**。截至 `0.4.0` 的已发布 npm 版本均不包含 `/harmony`，请从当前 checkout 构建 OHPM 包。上面的 npm 导入路径指本地重新构建的包，或未来包含适配器的发行版。
+npm 的 `/harmony` 入口**自 `0.5.0` 起**可用。OHPM 包未发布到 OHPM 仓库，请从当前 checkout 构建。
 
 ## 1. 构建本地 OHPM 包
 

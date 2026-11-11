@@ -144,7 +144,7 @@ export const checkoutSpec = viewModelSpec(CheckoutViewModel, () => new CheckoutV
      in `.ts` facades for ArkUI hosts: one `createViewModelHarmonyScope` per
      component, copy concrete snapshots into `@Local`/`@Trace` from the deferred
      `onUpdate`, forward page show/hide to `setVisible`, and dispose in
-     `aboutToDisappear`. It is an unreleased source preview.
+     `aboutToDisappear`. It is a preview available since 0.5.0.
    - Never generate a `@lwjlol/view_model/react` import or claim Web/SSR/RSC support.
    - Use one application Runtime for one sharing graph; use separate Runtimes
      for hard isolation, independent pause state, tests, or separate realms.

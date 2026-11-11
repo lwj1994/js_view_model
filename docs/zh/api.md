@@ -8,7 +8,7 @@
 
 `@lwjlol/view_model` 与 `/core` 导出不依赖框架的 API。
 `/react-native`、`/electron`、`/vue` 和 `/taro-vue` 重导出 core，并增加可选宿主适配。
-尚未发布的 `/harmony` 源码预览重导出 core，并提供显式 ArkUI 回调 Scope 与生命周期桥接，详见
+`/harmony` 预览（自 0.5.0 起）重导出 core，并提供显式 ArkUI 回调 Scope 与生命周期桥接，详见
 [HarmonyOS / ArkUI](./harmony.md)。
 `/eslint` 是可选的类型感知 ESLint 插件，只在 lint 进程中加载，不会导入 runtime，详见 [ESLint 规则](./lint.md)。
 没有公开 `/react` 入口，也不承诺 Web/SSR/RSC。下划线前缀和 `@internal` 成员属于实现细节，

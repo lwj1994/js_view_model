@@ -18,7 +18,7 @@
 1. [ViewModel 与 StateViewModel](./view-models.md)
 2. [模块组合与依赖注入](./dependency-injection.md)
 3. [生命周期、StrictMode 与暂停恢复](./lifecycle.md)
-4. [React Native 集成](./react-native.md)或 [Electron 集成](./electron.md)；源码预览见 [HarmonyOS / ArkUI](./harmony.md)
+4. [React Native 集成](./react-native.md)或 [Electron 集成](./electron.md)；预览见 [HarmonyOS / ArkUI](./harmony.md)
 
 ### 维护或审查项目
 
@@ -62,6 +62,6 @@
 
 公开应用入口包括 `@lwjlol/view_model/core`、`@lwjlol/view_model/react-native`、`@lwjlol/view_model/electron`，以及可选的 `@lwjlol/view_model/vue` 和 `@lwjlol/view_model/taro-vue` 桥接，详见 [Vue 3 / Taro 4 集成](./vue-taro.md)。可选的 `@lwjlol/view_model/eslint` 入口是只在 lint 进程中加载的 ESLint 插件，详见 [ESLint 规则](./lint.md)。本库没有 `@lwjlol/view_model/react`，也不承诺 React Web、SSR、RSC 或浏览器 hydration。
 
-尚未发布的 `@lwjlol/view_model/harmony` 入口与本地 OHPM 包属于
-[HarmonyOS / ArkUI 源码预览](./harmony.md)。Node 测试覆盖回调适配、包入口与 TS 门面，
+`@lwjlol/view_model/harmony` 入口（自 0.5.0 起）与本地 OHPM 包属于
+[HarmonyOS / ArkUI 预览](./harmony.md)。Node 测试覆盖回调适配、包入口与 TS 门面，
 DevEco 编译和真机验证需另行完成。

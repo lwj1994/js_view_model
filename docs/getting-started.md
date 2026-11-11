@@ -17,7 +17,7 @@ The core runtime does not depend on React. A `ViewModelScope` is only a React ad
 Install the published package in the React Native or Electron application:
 
 ```sh
-npm install @lwjlol/view_model@0.4.0
+npm install @lwjlol/view_model@0.5.0
 ```
 
 The host application supplies the relevant peer dependencies: React and React Native for a React Native app, or React and Electron for an Electron renderer. Electron main can use the core entry without React.

@@ -8,7 +8,7 @@ The alignment additions ship in 0.4.0. See the migration guide before upgrading 
 
 `@lwjlol/view_model` and `/core` export the framework-independent API.
 `/react-native`, `/electron`, `/vue`, and `/taro-vue` re-export core and add their optional host adapters.
-The unreleased `/harmony` source preview re-exports core with an explicit ArkUI callback Scope and
+The `/harmony` preview (since 0.5.0) re-exports core with an explicit ArkUI callback Scope and
 lifecycle bridge; see [HarmonyOS / ArkUI](./harmony.md).
 `/eslint` is the optional type-aware ESLint plugin; it loads only in the lint process and never
 imports the runtime. See [ESLint rules](./lint.md).

@@ -21,7 +21,7 @@ Keeping the business code in `.ts` is deliberate. ArkTS supports importing TS/JS
 
 Both Harmony entry points re-export the core APIs. The **npm root** remains the core-only entry; its exports are not the same as the generated OHPM root.
 
-These Harmony entry points are **unreleased additions in this checkout**. Published npm releases up to and including `0.4.0` do not include `/harmony`. Use the OHPM output generated from this checkout; the npm entry above describes a locally rebuilt package or a future release containing this change.
+The npm `/harmony` entry is available **since `0.5.0`**. The OHPM package is not published to the OHPM registry; generate it from a checkout of the matching release tag.
 
 Build the local OHPM package from the repository root:
 
